@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>CarbonWise</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+<h2>CarbonWise Emission Comparison</h2>
+
+<button onclick="loadData()">Compare</button>
+
+<br><br>
+
+<canvas id="chart" width="400" height="200"></canvas>
+
+<div id="results"></div>
+
+<script>
+
+let chartInstance = null;
+
+async function loadData() {
+
+  const res = await fetch("http://127.0.0.1:8000/compare");
+  const data = await res.json();
+
+  const ctx = document.getElementById("chart").getContext("2d");
+
+  if (chartInstance) {
+    chartInstance.destroy();
+  }
+
+  chartInstance = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: ["BEV", "ICE"],
+      datasets: [{
+        label: "Total CO2 (kg)",
+        data: [data.bev_total_kg, data.ice_total_kg],
+        backgroundColor: ["green","red"]
+      }]
+    }
+  });
+
+  document.getElementById("results").innerHTML = `
+    <h3>Results</h3>
+    <p>BEV Emissions: ${Math.round(data.bev_total_kg)} kg CO₂</p>
+    <p>ICE Emissions: ${Math.round(data.ice_total_kg)} kg CO₂</p>
+    <p>Break-even Distance: ${Math.round(data.break_even_km)} km</p>
+    <b>${data.recommendation}</b>
+  `;
+}
+
+</script>
+
+</body>
+</html>

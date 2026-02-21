@@ -1,0 +1,10 @@
+{
+  "steel": 1.9,
+  "aluminum": 8.5,
+  "plastics": 2.5,
+  "copper": 4.0,
+  "battery": 120,
+  "fuel": 2.31,
+  "assembly": 2500,
+  "eol": 800
+}
