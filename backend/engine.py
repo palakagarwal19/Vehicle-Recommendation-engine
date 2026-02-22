@@ -1,53 +1,67 @@
 import json
+import os
 
-def load(path):
-    with open(path) as f:
+# Base directory of backend
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_json(filename):
+    path = os.path.join(BASE_DIR, "data", filename)
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-vehicles = load("data/vehicles.json")
-materials = load("data/materials.json")
-grid = load("data/grid.json")
-factors = load("data/emission_factors.json")
 
-# -----------------------
-def manufacturing_emissions(vehicle):
-    profile = materials[vehicle["type"]]
-    total = 0
+def get_vehicle(filters):
+    vehicles = load_json("eu_vehicles_master.json")
 
-    for mat, frac in profile.items():
-        mass = vehicle["curb_weight"] * frac
-        total += mass * factors[mat]
+    results = vehicles
 
-    if vehicle["type"] == "BEV":
-        total += vehicle["battery_capacity"] * factors["battery"]
+    for key, value in filters.items():
+        results = [
+            v for v in results
+            if str(v.get(key)).lower() == str(value).lower()
+        ]
 
-    total += factors["assembly"]
-    return total
+    return results
 
-# -----------------------
-def usage_emissions(vehicle, daily_km, years, country):
-    km_total = daily_km * 365 * years
+
+def get_grid_intensity(country_code, year):
+    grid = load_json("grid_intensity.json")
+
+    match = next(
+        (
+            g for g in grid
+            if g["iso3"] == country_code and g["Year"] == year
+        ),
+        None
+    )
+
+    return match["grid_intensity_gpkwh"] if match else None
+
+
+def calculate_operational(vehicle, country_code=None, year=None, lifetime_km=150000):
 
     if vehicle["type"] == "ICE":
-        liters = km_total * (vehicle["fuel_consumption"] / 100)
-        return liters * factors["fuel"]
+        per_km = vehicle["co2_wltp_gpkm"]
+
     else:
-        kwh = km_total * (vehicle["electric_consumption"] / 100)
-        return kwh * grid[country]
+        grid_factor = get_grid_intensity(country_code, year)
 
-# -----------------------
-def total_emissions(vehicle, daily_km, years, country):
-    return (
-        manufacturing_emissions(vehicle)
-        + usage_emissions(vehicle, daily_km, years, country)
-        + factors["eol"]
-    )
-# -----------------------
-def break_even_km(bev, ice, country):
-    bev_m = manufacturing_emissions(bev)
-    ice_m = manufacturing_emissions(ice)
+        if grid_factor is None:
+            return {"error": "Grid intensity not found"}
 
-    bev_rate = (bev["electric_consumption"]/100) * grid[country]
-    ice_rate = (ice["fuel_consumption"]/100) * factors["fuel"]
+        wh_per_km = vehicle.get("electric_wh_per_km")
 
-    return (ice_m - bev_m) / (bev_rate - ice_rate)
+        if wh_per_km is None:
+            return {"error": "Electric consumption missing in dataset"}
+
+        per_km = (wh_per_km / 1000) * grid_factor
+
+    lifetime = (per_km * lifetime_km) / 1000
+
+    return {
+        "vehicle": vehicle["model"],
+        "type": vehicle["type"],
+        "per_km_g": round(per_km, 2),
+        "lifetime_kg": round(lifetime, 2)
+    }
