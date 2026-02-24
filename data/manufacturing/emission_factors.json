@@ -1,0 +1,15 @@
+{
+  "battery": {
+    "LiIon": 11.5,
+    "NiMH": 8.18,
+    "LeadAcid": 1.92
+  },
+  "fluids": {
+    "engine_oil": 3,
+    "brake_fluid": 2.5,
+    "transmission_fluid": 2.7,
+    "coolant": 1.8,
+    "windshield_fluid": 1.2,
+    "adhesives": 3.5
+  }
+}

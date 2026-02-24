@@ -1,6 +1,7 @@
 import os
 import json
 from flask import Flask, request, jsonify
+from engine import get_vehicle, calculate_lifecycle
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -18,11 +19,9 @@ def vehicles():
     with open(path, "r", encoding="utf-8") as f:
         return jsonify(json.load(f))
 
-
 # -----------------------------
 # COMPARE ENDPOINT
 # -----------------------------
-
 @app.route("/compare")
 def compare():
 
@@ -34,16 +33,19 @@ def compare():
     if not all([brand, model, year, country]):
         return jsonify({"error": "Missing parameters"})
 
-    return jsonify({
-        "vehicle": f"{brand} {model} {year}",
-        "per_km_g": 150,
-        "lifetime_kg": 20000
+    vehicles = get_vehicle({
+        "brand": brand,
+        "model": model,
+        "Year": year
     })
-    # TEMP TEST DATA
-    return jsonify({
-        "vehicle": f"{brand} {model} {year}",
-        "per_km_g": 120,
-        "lifetime_kg": 18000
-    })
+
+    if len(vehicles) == 0:
+        return jsonify({"error": "Vehicle not found"})
+
+    vehicle = vehicles[0]
+
+    result = calculate_lifecycle(vehicle, country, year)
+
+    return jsonify(result)
 if __name__ == "__main__":
     app.run(debug=True)

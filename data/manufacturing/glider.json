@@ -1,0 +1,17 @@
+{
+  "ICEV": {
+    "conventional": 4826.55
+  },
+  "HEV": {
+    "conventional": 4994.42
+  },
+  "PHEV": {
+    "conventional": 4968.21
+  },
+  "EV": {
+    "conventional": 4565.44
+  },
+  "FCV": {
+    "conventional": 6054.58
+  }
+}

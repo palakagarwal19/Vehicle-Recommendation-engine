@@ -1,59 +1,88 @@
 import os
-import pandas as pd
 import json
+import pandas as pd
+
+# -------------------------------
+# Setup paths
+# -------------------------------
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, ".."))
 
-RAW_PATH = os.path.join(BASE_DIR, "..", "data", "raw", "vehicles.csv")
-OUTPUT_PATH = os.path.join(BASE_DIR, "..", "data", "eu_vehicles_master.json")
+DATA_PATH = os.path.join(PROJECT_ROOT, "data", "raw","vehicles.csv")
+OUTPUT_PATH = os.path.join(PROJECT_ROOT, "data", "eu_vehicles_master.json")
+print("Loading dataset...")
 
+df = pd.read_csv(DATA_PATH, low_memory=False)
 
-def clean_dataset():
-    df = pd.read_csv(RAW_PATH, low_memory=False)
+# -------------------------------
+# Keep only needed columns
+# -------------------------------
+df = df[[
+    "make",
+    "model",
+    "year",
+    "co2TailpipeGpm",
+    "combE",
+    "fuelType1"
+]]
 
-    # Keep only useful columns
-    df = df[[
-        "make",
-        "model",
-        "year",
-        "fuelType",
-        "co2"
-    ]]
+# Convert numeric safely
+df["co2TailpipeGpm"] = pd.to_numeric(df["co2TailpipeGpm"], errors="coerce")
+df["combE"] = pd.to_numeric(df["combE"], errors="coerce")
 
-    # Drop rows where CO2 is missing
-    df = df.dropna(subset=["co2"])
+# -------------------------------
+# ICE Vehicles
+# -------------------------------
+ice = df[df["co2TailpipeGpm"] > 0].copy()
 
-    # Rename columns to match your engine expectations
-    df = df.rename(columns={
-        "make": "brand",
-        "year": "Year",
-        "fuelType": "fuel_type",
-        "co2": "co2_wltp_gpkm"
+# Convert g/mile → g/km
+ice["co2_wltp_gpkm"] = ice["co2TailpipeGpm"] / 1.60934
+ice["electric_wh_per_km"] = None
+ice["type"] = "ICE"
+
+# -------------------------------
+# EV Vehicles
+# -------------------------------
+ev = df[df["combE"] > 0].copy()
+
+# Convert kWh/100mile → Wh/km
+ev["electric_wh_per_km"] = (ev["combE"] * 1000) / (100 * 1.60934)
+ev["co2_wltp_gpkm"] = None
+ev["type"] = "EV"
+
+# -------------------------------
+# Merge ICE + EV
+# -------------------------------
+vehicles = pd.concat([ice, ev], ignore_index=True)
+
+# -------------------------------
+# Aggregate duplicates
+# -------------------------------
+vehicles = (
+    vehicles
+    .groupby(["make", "model", "year", "type"], as_index=False)
+    .agg({
+        "co2_wltp_gpkm": "mean",
+        "electric_wh_per_km": "mean"
     })
+)
 
-    # Add missing lifecycle columns
-    df["mass_kg"] = 1500  # average vehicle mass assumption
-    df["electric_wh_per_km"] = None
+# Round values
+vehicles["co2_wltp_gpkm"] = vehicles["co2_wltp_gpkm"].round(2)
+vehicles["electric_wh_per_km"] = vehicles["electric_wh_per_km"].round(2)
 
-    # Classify vehicle type
-    def classify(row):
-        if "Electric" in str(row["fuel_type"]):
-            return "BEV"
-        else:
-            return "ICE"
+# Rename columns to match backend
+vehicles = vehicles.rename(columns={
+    "make": "brand",
+    "year": "Year"
+})
 
-    df["type"] = df.apply(classify, axis=1)
+# -------------------------------
+# Export JSON
+# -------------------------------
+vehicles.to_json(OUTPUT_PATH, orient="records", indent=2)
 
-    # Convert NaN to None for JSON compatibility
-    df = df.where(pd.notnull(df), None)
-
-    vehicles = df.to_dict(orient="records")
-
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        json.dump(vehicles, f, indent=2)
-
-    print(f"Generated {len(vehicles)} vehicles successfully!")
-
-
-if __name__ == "__main__":
-    clean_dataset()
+print("Done.")
+print("Total vehicles exported:", len(vehicles))
+print("Saved to:", OUTPUT_PATH)

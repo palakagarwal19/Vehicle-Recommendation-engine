@@ -7,7 +7,6 @@ let chart;
 document.addEventListener("DOMContentLoaded", async function () {
     await loadVehicles();
 
-    // Add change listeners AFTER data is loaded
     document.getElementById("brandSelect")
         .addEventListener("change", populateModels);
 
@@ -33,18 +32,29 @@ window.compareVehicle = async function () {
     const model = document.getElementById("modelSelect").value;
     const year = document.getElementById("yearSelect").value;
 
+    if (!brand || !model || !year) {
+        alert("Please select brand, model and year");
+        return;
+    }
+
     const response = await fetch(
         `http://127.0.0.1:5000/compare?brand=${brand}&model=${model}&year=${year}&country=POL`
     );
 
     const data = await response.json();
-    updateChart(data);
+
+    if (data.error) {
+        alert(data.error);
+        return;
+    }
+
+    updateChart(data, brand, model);
 };
 
 // ===============================
 // Chart Update
 // ===============================
-function updateChart(data) {
+function updateChart(data, brand, model) {
 
     const ctx = document.getElementById("chart").getContext("2d");
 
@@ -53,14 +63,18 @@ function updateChart(data) {
     chart = new Chart(ctx, {
         type: "bar",
         data: {
-            labels: ["Per KM (g CO₂)", "Lifetime (kg CO₂)"],
+            labels: [
+                "Operational (g CO₂/km)",
+                "Manufacturing (g CO₂/km)",
+                "Total Lifecycle (g CO₂/km)"
+            ],
             datasets: [{
-                label: data.brand + " " + data.model,
+                label: `${brand} ${model}`,
                 data: [
-                    Number(data.per_km_g || 0),
-                    Number(data.lifetime_kg || 0)
-                ],
-                backgroundColor: ["green", "blue"]
+                    Number(data.operational_g_per_km),
+                    Number(data.manufacturing_g_per_km),
+                    Number(data.total_g_per_km)
+                ]
             }]
         }
     });
@@ -72,10 +86,10 @@ function updateChart(data) {
 
 function populateBrands() {
 
-    const brands = [...new Set(vehiclesData.map(v => v.brand))].sort();
     const brandSelect = document.getElementById("brandSelect");
+    brandSelect.innerHTML = `<option value="">Select Brand</option>`;
 
-    brandSelect.innerHTML = "";
+    const brands = [...new Set(vehiclesData.map(v => v.brand))].sort();
 
     brands.forEach(brand => {
         const option = document.createElement("option");
@@ -83,13 +97,18 @@ function populateBrands() {
         option.textContent = brand;
         brandSelect.appendChild(option);
     });
-
-    populateModels();
 }
 
 function populateModels() {
 
     const brand = document.getElementById("brandSelect").value;
+    const modelSelect = document.getElementById("modelSelect");
+
+    modelSelect.innerHTML = `<option value="">Select Model</option>`;
+    document.getElementById("yearSelect").innerHTML =
+        `<option value="">Select Year</option>`;
+
+    if (!brand) return;
 
     const models = [
         ...new Set(
@@ -99,23 +118,23 @@ function populateModels() {
         )
     ];
 
-    const modelSelect = document.getElementById("modelSelect");
-    modelSelect.innerHTML = "";
-
     models.forEach(model => {
         const option = document.createElement("option");
         option.value = model;
         option.textContent = model;
         modelSelect.appendChild(option);
     });
-
-    populateYears();
 }
 
 function populateYears() {
 
     const brand = document.getElementById("brandSelect").value;
     const model = document.getElementById("modelSelect").value;
+    const yearSelect = document.getElementById("yearSelect");
+
+    yearSelect.innerHTML = `<option value="">Select Year</option>`;
+
+    if (!brand || !model) return;
 
     const years = [
         ...new Set(
@@ -123,10 +142,7 @@ function populateYears() {
                 .filter(v => v.brand === brand && v.model === model)
                 .map(v => v.Year)
         )
-    ];
-
-    const yearSelect = document.getElementById("yearSelect");
-    yearSelect.innerHTML = "";
+    ].sort((a, b) => b - a);
 
     years.forEach(year => {
         const option = document.createElement("option");
