@@ -1,0 +1,183 @@
+/* Filters */
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.filter-group label {
+  font-weight: var(--font-weight-bold);
+  color: var(--color-eco-green);
+  font-size: 0.875rem;
+}
+
+.filter-select {
+  padding: 0.75rem;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  font-family: var(--font-primary);
+  transition: all var(--transition-fast);
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--color-eco-green);
+  box-shadow: 0 0 0 2px rgba(0, 200, 83, 0.2);
+}
+
+/* Vehicle List */
+.vehicle-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: var(--spacing-sm);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.vehicle-item {
+  padding: var(--spacing-sm);
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.vehicle-item:hover {
+  border-color: var(--color-eco-green);
+  background-color: rgba(0, 200, 83, 0.1);
+}
+
+.vehicle-item.selected {
+  border-color: var(--color-eco-green);
+  background-color: rgba(0, 200, 83, 0.15);
+}
+
+.vehicle-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.vehicle-item h5 {
+  margin-bottom: 0.25rem;
+}
+
+.vehicle-item p {
+  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
+}
+
+/* Unit Toggle */
+.unit-toggle {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.unit-btn {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--color-text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.unit-btn.active {
+  background-color: var(--color-eco-green);
+  color: var(--color-primary-black);
+  border-color: var(--color-eco-green);
+}
+
+/* Comparison Grid */
+#comparison-grid {
+  min-height: 200px;
+}
+
+.comparison-card {
+  position: relative;
+}
+
+.comparison-card .remove-btn {
+  position: absolute;
+  top: var(--spacing-sm);
+  right: var(--spacing-sm);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background-color: rgba(255, 82, 82, 0.8);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  transition: all var(--transition-fast);
+}
+
+.comparison-card .remove-btn:hover {
+  background-color: #FF5252;
+  transform: scale(1.1);
+}
+
+.comparison-card h4 {
+  margin-bottom: var(--spacing-sm);
+  padding-right: 40px;
+}
+
+.emission-value {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.emission-value:last-child {
+  border-bottom: none;
+}
+
+.emission-label {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.emission-number {
+  font-weight: var(--font-weight-bold);
+  color: var(--color-eco-green);
+}
+
+/* Charts */
+.charts-section canvas {
+  max-height: 300px;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: var(--spacing-xl);
+  color: var(--color-text-secondary);
+}
+
+.empty-state-icon {
+  font-size: 4rem;
+  margin-bottom: var(--spacing-md);
+  opacity: 0.5;
+}
+
+@media (max-width: 768px) {
+  .filters {
+    grid-template-columns: 1fr;
+  }
+  
+  .unit-toggle {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .unit-btn {
+    width: 100%;
+  }
+}

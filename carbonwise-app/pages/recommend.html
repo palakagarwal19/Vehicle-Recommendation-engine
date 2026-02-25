@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Get Recommendation - CarbonWise</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Poppins:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/variables.css">
+  <link rel="stylesheet" href="../styles/reset.css">
+  <link rel="stylesheet" href="../styles/components.css">
+  <link rel="stylesheet" href="../styles/layout.css">
+  <link rel="stylesheet" href="../styles/recommend.css">
+</head>
+<body>
+  <nav class="nav">
+    <div class="container nav-container">
+      <div class="nav-logo">CarbonWise</div>
+      <button class="nav-toggle" aria-label="Toggle navigation">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <ul class="nav-links">
+        <li><a href="../index.html" class="nav-link">Home</a></li>
+        <li><a href="compare.html" class="nav-link">Compare</a></li>
+        <li><a href="recommend.html" class="nav-link">Recommend</a></li>
+        <li><a href="grid-insights.html" class="nav-link">Grid Insights</a></li>
+        <li><a href="methodology.html" class="nav-link">Methodology</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main>
+    <div class="container">
+      <h1 class="text-center mb-lg">Get Vehicle Recommendation</h1>
+      
+      <div class="grid grid-2">
+        <section class="card">
+          <h3 class="mb-md">Your Criteria</h3>
+          <form id="criteria-form">
+            <div class="form-group">
+              <label>Budget Range</label>
+              <div class="flex">
+                <input type="number" id="budget-min" placeholder="Min" value="20000">
+                <input type="number" id="budget-max" placeholder="Max" value="50000">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Body Type</label>
+              <select id="body-type">
+                <option value="">Any</option>
+                <option value="Sedan">Sedan</option>
+                <option value="SUV">SUV</option>
+                <option value="Hatchback">Hatchback</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Country</label>
+              <select id="country">
+                <option value="US">United States</option>
+                <option value="EU">Europe</option>
+                <option value="UK">United Kingdom</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Annual km Driven</label>
+              <input type="number" id="annual-km" value="15000">
+            </div>
+            <div class="form-group">
+              <label>Preferred Powertrain</label>
+              <select id="powertrain">
+                <option value="">Any</option>
+                <option value="BEV">BEV</option>
+                <option value="PHEV">PHEV</option>
+                <option value="Hybrid">Hybrid</option>
+                <option value="ICE">ICE</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Get Recommendations</button>
+          </form>
+        </section>
+
+        <section id="results" class="card" style="display: none;">
+          <h3 class="mb-md">Top 3 Recommendations</h3>
+          <div id="recommendations"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <h4>CarbonWise</h4>
+          <p>Data-driven vehicle lifecycle carbon comparison platform.</p>
+        </div>
+        <div class="footer-section">
+          <h4>Data Sources</h4>
+          <ul>
+            <li><a href="https://ember-climate.org" target="_blank">Ember Climate</a></li>
+            <li><a href="https://greet.es.anl.gov" target="_blank">GREET Model</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2026 CarbonWise. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../scripts/navigation.js"></script>
+  <script src="../scripts/formatters.js"></script>
+  <script src="../scripts/recommend.js"></script>
+</body>
+</html>

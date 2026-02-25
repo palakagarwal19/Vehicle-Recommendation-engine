@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Compare True Vehicle Carbon Impact - Manufacturing + Grid + Fuel Lifecycle Emissions">
+  <title>CarbonWise - Vehicle Lifecycle Carbon Comparison</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Poppins:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles/variables.css">
+  <link rel="stylesheet" href="styles/reset.css">
+  <link rel="stylesheet" href="styles/components.css">
+  <link rel="stylesheet" href="styles/layout.css">
+  <link rel="stylesheet" href="styles/landing.css">
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="container nav-container">
+      <div class="nav-logo">CarbonWise</div>
+      <button class="nav-toggle" aria-label="Toggle navigation">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <ul class="nav-links">
+        <li><a href="index.html" class="nav-link">Home</a></li>
+        <li><a href="pages/compare.html" class="nav-link">Compare</a></li>
+        <li><a href="pages/recommend.html" class="nav-link">Recommend</a></li>
+        <li><a href="pages/grid-insights.html" class="nav-link">Grid Insights</a></li>
+        <li><a href="pages/methodology.html" class="nav-link">Methodology</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main>
+    <!-- Hero Section -->
+    <section class="hero">
+      <canvas id="animated-bg" class="hero-bg"></canvas>
+      <div class="container hero-content">
+        <h1 class="hero-title">Compare True Vehicle Carbon Impact</h1>
+        <p class="hero-subtitle">Manufacturing + Grid + Fuel Lifecycle Emissions</p>
+        <div class="hero-cta">
+          <a href="pages/compare.html" class="btn btn-primary btn-lg">Compare Vehicles</a>
+          <a href="pages/recommend.html" class="btn btn-secondary btn-lg">Get Recommendation</a>
+          <a href="pages/methodology.html" class="btn btn-outline btn-lg">View Methodology</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Feature Highlights -->
+    <section class="features">
+      <div class="container">
+        <h2 class="text-center mb-xl">Comprehensive Lifecycle Analysis</h2>
+        <div class="grid grid-3">
+          <div class="card card-hoverable">
+            <div class="feature-icon">🏭</div>
+            <h3>GREET Manufacturing Model</h3>
+            <p>Accurate production emissions including glider, battery, and fluids using the industry-standard GREET methodology.</p>
+          </div>
+          <div class="card card-hoverable">
+            <div class="feature-icon">⚡</div>
+            <h3>Real Grid Emissions</h3>
+            <p>Country-specific electricity grid intensity data with transmission and distribution losses factored in.</p>
+          </div>
+          <div class="card card-hoverable">
+            <div class="feature-icon">🚗</div>
+            <h3>WLTP + Fuel Lifecycle</h3>
+            <p>Operational emissions based on WLTP testing standards and complete fuel lifecycle analysis.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <h4>CarbonWise</h4>
+          <p>Data-driven vehicle lifecycle carbon comparison platform for sustainable transportation choices.</p>
+        </div>
+        <div class="footer-section">
+          <h4>Data Sources</h4>
+          <ul>
+            <li><a href="https://ember-climate.org" target="_blank" rel="noopener">Ember Climate</a></li>
+            <li><a href="https://greet.es.anl.gov" target="_blank" rel="noopener">GREET Model</a></li>
+            <li><a href="https://www.eea.europa.eu" target="_blank" rel="noopener">EEA</a></li>
+            <li><a href="https://www.worldbank.org" target="_blank" rel="noopener">World Bank</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h4>Links</h4>
+          <ul>
+            <li><a href="#" target="_blank" rel="noopener">GitHub</a></li>
+            <li><a href="mailto:contact@carbonwise.example">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2026 CarbonWise. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="scripts/navigation.js"></script>
+  <script src="scripts/animated-bg.js"></script>
+</body>
+</html>

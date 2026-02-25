@@ -1,0 +1,89 @@
+.form-group {
+  margin-bottom: var(--spacing-md);
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-eco-green);
+  font-size: 0.875rem;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  font-family: var(--font-primary);
+  transition: all var(--transition-fast);
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--color-eco-green);
+  box-shadow: 0 0 0 2px rgba(0, 200, 83, 0.2);
+}
+
+.recommendation-card {
+  padding: var(--spacing-md);
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  border-left: 4px solid var(--color-eco-green);
+  margin-bottom: var(--spacing-md);
+}
+
+.recommendation-card.rank-1 {
+  border-left-color: #00C853;
+}
+
+.recommendation-card.rank-2 {
+  border-left-color: #69F0AE;
+}
+
+.recommendation-card.rank-3 {
+  border-left-color: #FFC107;
+}
+
+.score {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-weight: var(--font-weight-bold);
+  font-size: 0.875rem;
+}
+
+.score-excellent {
+  background-color: #00C853;
+  color: var(--color-primary-black);
+}
+
+.score-good {
+  background-color: #69F0AE;
+  color: var(--color-primary-black);
+}
+
+.score-moderate {
+  background-color: #FFC107;
+  color: var(--color-primary-black);
+}
+
+.reasoning {
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.reasoning ul {
+  list-style: disc;
+  padding-left: var(--spacing-md);
+  color: var(--color-text-secondary);
+}
+
+.reasoning li {
+  margin-bottom: 0.25rem;
+}
