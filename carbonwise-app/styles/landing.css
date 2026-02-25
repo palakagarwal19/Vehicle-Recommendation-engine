@@ -81,3 +81,26 @@
     width: 100%;
   }
 }
+
+
+/* Tools Section */
+.tools {
+  padding: var(--spacing-xl) 0;
+  background-color: rgba(26, 26, 26, 0.5);
+}
+
+.tool-card {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  transition: all var(--transition-normal);
+}
+
+.tool-card h3 {
+  color: var(--color-eco-green);
+  margin-bottom: var(--spacing-sm);
+}
+
+.tool-card:hover {
+  transform: translateY(-8px);
+}

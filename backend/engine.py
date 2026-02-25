@@ -67,14 +67,71 @@ def get_vehicle(filters):
 # GRID LOOKUP (EMBER + T&D Corrected)
 # =====================================================
 
+# Country code mapping: 2-letter to 3-letter ISO codes
+COUNTRY_CODE_MAP = {
+    "US": "USA",
+    "DE": "DEU",
+    "FR": "FRA",
+    "UK": "GBR",
+    "CN": "CHN",
+    "JP": "JPN",
+    "IN": "IND",
+    "CA": "CAN",
+    "AU": "AUS",
+    "BR": "BRA",
+    "IT": "ITA",
+    "ES": "ESP",
+    "MX": "MEX",
+    "KR": "KOR",
+    "ID": "IDN",
+    "NL": "NLD",
+    "SA": "SAU",
+    "TR": "TUR",
+    "CH": "CHE",
+    "PL": "POL",
+    "BE": "BEL",
+    "SE": "SWE",
+    "NO": "NOR",
+    "AT": "AUT",
+    "DK": "DNK",
+    "FI": "FIN",
+    "PT": "PRT",
+    "GR": "GRC",
+    "CZ": "CZE",
+    "RO": "ROU",
+    "NZ": "NZL",
+    "IE": "IRL",
+    "SG": "SGP",
+    "MY": "MYS",
+    "TH": "THA",
+    "PH": "PHL",
+    "VN": "VNM",
+    "PK": "PAK",
+    "BD": "BGD",
+    "EG": "EGY",
+    "ZA": "ZAF",
+    "NG": "NGA",
+    "AR": "ARG",
+    "CL": "CHL",
+    "CO": "COL",
+    "PE": "PER",
+    "VE": "VEN",
+}
+
 def get_grid_intensity(country_code, year, use_corrected=True):
 
-    grid = load_json("grid_master_v2_2026.json")
+    grid = load_json("grid_master_v2_2026_clean.json")
 
+    # Convert 2-letter to 3-letter code if needed
+    original_code = country_code
     country_code = country_code.upper()
+    if country_code in COUNTRY_CODE_MAP:
+        country_code = COUNTRY_CODE_MAP[country_code]
+    
     year = str(year)
 
     if country_code not in grid:
+        print(f"Country code '{original_code}' (mapped to '{country_code}') not found in grid data")
         return None
 
     if year not in grid[country_code]:
@@ -82,11 +139,15 @@ def get_grid_intensity(country_code, year, use_corrected=True):
         if not available_years:
             return None
         year = available_years[-1]
+        print(f"Year {year} not found, using latest: {available_years[-1]}")
 
-    if use_corrected:
-        return grid[country_code][year]["corrected"]
-    else:
-        return grid[country_code][year]["raw"]
+    value = grid[country_code][year]["corrected"] if use_corrected else grid[country_code][year]["raw"]
+    
+    # Handle None values (from NaN in data)
+    if value is None:
+        return None
+    
+    return value
 
 
 
@@ -104,9 +165,14 @@ def calculate_operational(vehicle, country_code=None, year=None, lifetime_km=278
         greet_wtw = get_greet_wtw(vehicle)
 
         if greet_wtw is None:
-            return {"error": "GREET WTW value not found"}
-
-        per_km = float(greet_wtw)
+            # Fallback: use CO2 WLTP value if available
+            co2_wltp = vehicle.get("co2_wltp_gpkm")
+            if co2_wltp is not None:
+                per_km = float(co2_wltp)
+            else:
+                return {"error": "GREET WTW value not found and no CO2 WLTP data available"}
+        else:
+            per_km = float(greet_wtw)
 
     # ---------------- EV / HEV / PHEV ----------------
     elif vtype == "EV":
@@ -150,7 +216,13 @@ def calculate_lifecycle(vehicle, country_code, year):
     if "error" in operational:
         return operational
 
-    manuf_per_km = manufacturing_per_km(vehicle)  # kg/km from GREET2
+    try:
+        manuf_per_km = manufacturing_per_km(vehicle)  # kg/km from GREET2
+    except ValueError as e:
+        return {"error": f"Manufacturing calculation failed: {str(e)}"}
+    
+    if manuf_per_km is None:
+        return {"error": "Manufacturing emissions could not be calculated"}
 
     total_per_km = operational["operational_g_per_km"] + (manuf_per_km * 1000)
 

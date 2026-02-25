@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Break-Even Analysis - CarbonWise</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Poppins:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../styles/variables.css">
+  <link rel="stylesheet" href="../styles/reset.css">
+  <link rel="stylesheet" href="../styles/components.css">
+  <link rel="stylesheet" href="../styles/layout.css">
+  <link rel="stylesheet" href="../styles/break-even.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <nav class="nav">
+    <div class="container nav-container">
+      <div class="nav-logo">
+        <span class="logo-icon">🌱</span>
+        <span>CarbonWise</span>
+      </div>
+      <button class="nav-toggle" aria-label="Toggle navigation">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <ul class="nav-links">
+        <li><a href="../index.html" class="nav-link">Home</a></li>
+        <li><a href="compare.html" class="nav-link">Compare</a></li>
+        <li><a href="recommend.html" class="nav-link">Recommend</a></li>
+        <li><a href="break-even.html" class="nav-link">Break-Even</a></li>
+        <li><a href="greenwashing.html" class="nav-link">Greenwashing</a></li>
+        <li><a href="grid-insights.html" class="nav-link">Grid Insights</a></li>
+        <li><a href="methodology.html" class="nav-link">Methodology</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main>
+    <div class="container">
+      <h1 class="text-center mb-md">EV vs ICE Break-Even Analysis</h1>
+      <p class="text-center text-secondary mb-lg">Calculate the distance at which an EV's total emissions equal an ICE vehicle</p>
+      
+      <div class="grid grid-2">
+        <!-- EV Selection -->
+        <section class="card">
+          <h3 class="mb-md">Select Electric Vehicle</h3>
+          <div class="form-group">
+            <label for="ev-brand">Brand</label>
+            <select id="ev-brand" class="filter-select">
+              <option value="">Select Brand</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="ev-model">Model</label>
+            <select id="ev-model" class="filter-select">
+              <option value="">Select Model</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="ev-year">Year</label>
+            <select id="ev-year" class="filter-select">
+              <option value="">Select Year</option>
+            </select>
+          </div>
+          <div id="ev-preview" class="vehicle-preview"></div>
+        </section>
+
+        <!-- ICE Selection -->
+        <section class="card">
+          <h3 class="mb-md">Select ICE Vehicle</h3>
+          <div class="form-group">
+            <label for="ice-brand">Brand</label>
+            <select id="ice-brand" class="filter-select">
+              <option value="">Select Brand</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="ice-model">Model</label>
+            <select id="ice-model" class="filter-select">
+              <option value="">Select Model</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="ice-year">Year</label>
+            <select id="ice-year" class="filter-select">
+              <option value="">Select Year</option>
+            </select>
+          </div>
+          <div id="ice-preview" class="vehicle-preview"></div>
+        </section>
+      </div>
+
+      <!-- Analysis Parameters -->
+      <section class="card mt-lg">
+        <h3 class="mb-md">Analysis Parameters</h3>
+        <div class="grid grid-3">
+          <div class="form-group">
+            <label for="country">Country</label>
+            <select id="country" class="filter-select">
+              <option value="US">United States</option>
+              <option value="DE">Germany</option>
+              <option value="FR">France</option>
+              <option value="UK">United Kingdom</option>
+              <option value="CN">China</option>
+              <option value="JP">Japan</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="year">Grid Year</label>
+            <input type="number" id="year" value="2024" class="filter-select">
+          </div>
+          <div class="form-group">
+            <label>&nbsp;</label>
+            <button class="btn btn-primary" onclick="calculateBreakEven()" style="width: 100%;">Calculate Break-Even</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Results -->
+      <section id="results" class="mt-lg" style="display: none;">
+        <div class="card mb-lg">
+          <h3 class="mb-md text-center">Break-Even Results</h3>
+          <div class="break-even-display">
+            <div class="break-even-value">
+              <span id="break-even-km" class="big-number">-</span>
+              <span class="unit">kilometers</span>
+            </div>
+            <p class="text-center mt-md" id="break-even-message"></p>
+          </div>
+        </div>
+
+        <div class="grid grid-2">
+          <div class="card">
+            <h4 class="mb-md">Cumulative Emissions Chart</h4>
+            <canvas id="cumulative-chart"></canvas>
+          </div>
+          <div class="card">
+            <h4 class="mb-md">Emissions Comparison</h4>
+            <div id="comparison-details"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <h4>CarbonWise</h4>
+          <p>Data-driven vehicle lifecycle carbon comparison platform.</p>
+        </div>
+        <div class="footer-section">
+          <h4>Data Sources</h4>
+          <ul>
+            <li><a href="https://ember-climate.org" target="_blank">Ember Climate</a></li>
+            <li><a href="https://greet.es.anl.gov" target="_blank">GREET Model</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2026 CarbonWise. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../scripts/navigation.js"></script>
+  <script src="../scripts/formatters.js"></script>
+  <script src="../scripts/api.js"></script>
+  <script src="../scripts/break-even.js"></script>
+</body>
+</html>

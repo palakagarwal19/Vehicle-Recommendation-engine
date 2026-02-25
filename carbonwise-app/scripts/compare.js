@@ -1,24 +1,39 @@
 let vehicles = [];
 let selectedVehicles = [];
+let selectedVehiclesData = [];
 let currentUnit = 'g_km';
+let currentCountry = 'US';
+let currentYear = 2024;
 
-// Load vehicles data
 async function loadVehicles() {
   try {
-    const response = await fetch('../data/vehicles.json');
+    const response = await fetch('http://localhost:5000/vehicles');
+
+    if (!response.ok) {
+      throw new Error('Network response was not ok');
+    }
+
     vehicles = await response.json();
+
     populateFilters();
     renderVehicleList();
+
   } catch (error) {
     console.error('Error loading vehicles:', error);
+    showError('Failed to load vehicle data. Please try again.');
   }
+}
+
+// Show error message
+function showError(message) {
+  const list = document.getElementById('vehicle-list');
+  list.innerHTML = `<p class="text-center" style="padding: 2rem; color: #FF5252;">${message}</p>`;
 }
 
 // Populate filter dropdowns
 function populateFilters() {
-  const brands = [...new Set(vehicles.map(v => v.brand))];
-  const years = [...new Set(vehicles.map(v => v.year))];
-  const countries = [...new Set(vehicles.map(v => v.country))];
+  const brands = [...new Set(vehicles.map(v => v.brand))].sort();
+  const years = [...new Set(vehicles.map(v => v.Year))].sort((a, b) => b - a);
   
   const brandFilter = document.getElementById('brand-filter');
   brands.forEach(brand => {
@@ -35,14 +50,6 @@ function populateFilters() {
     option.textContent = year;
     yearFilter.appendChild(option);
   });
-  
-  const countryFilter = document.getElementById('country-filter');
-  countries.forEach(country => {
-    const option = document.createElement('option');
-    option.value = country;
-    option.textContent = country;
-    countryFilter.appendChild(option);
-  });
 }
 
 // Filter vehicles
@@ -50,14 +57,12 @@ function getFilteredVehicles() {
   const brand = document.getElementById('brand-filter').value;
   const year = document.getElementById('year-filter').value;
   const powertrain = document.getElementById('powertrain-filter').value;
-  const country = document.getElementById('country-filter').value;
   
   return vehicles.filter(v => {
     return (!brand || v.brand === brand) &&
-           (!year || v.year == year) &&
-           (!powertrain || v.powertrain === powertrain) &&
-           (!country || v.country === country);
-  });
+           (!year || v.Year == year) &&
+           (!powertrain || v.type === powertrain);
+  }).slice(0, 100); // Limit to 100 for performance
 }
 
 // Render vehicle list
@@ -67,16 +72,22 @@ function renderVehicleList() {
   
   list.innerHTML = '';
   
+  if (filtered.length === 0) {
+    list.innerHTML = '<p class="text-center" style="padding: 2rem; color: var(--color-text-secondary);">No vehicles found. Try adjusting filters.</p>';
+    return;
+  }
+  
   filtered.forEach(vehicle => {
-    const isSelected = selectedVehicles.some(v => v.id === vehicle.id);
+    const vehicleKey = `${vehicle.brand}-${vehicle.model}-${vehicle.Year}`;
+    const isSelected = selectedVehicles.some(v => v === vehicleKey);
     const isDisabled = selectedVehicles.length >= 3 && !isSelected;
     
     const item = document.createElement('div');
     item.className = `vehicle-item ${isSelected ? 'selected' : ''} ${isDisabled ? 'disabled' : ''}`;
     item.innerHTML = `
       <h5>${vehicle.brand} ${vehicle.model}</h5>
-      <p><span class="badge badge-${vehicle.powertrain.toLowerCase()}">${vehicle.powertrain}</span></p>
-      <p>${vehicle.year} • ${vehicle.country}</p>
+      <p><span class="badge badge-${vehicle.type.toLowerCase()}">${vehicle.type}</span></p>
+      <p>${vehicle.Year}</p>
     `;
     
     if (!isDisabled) {
@@ -88,13 +99,40 @@ function renderVehicleList() {
 }
 
 // Toggle vehicle selection
-function toggleVehicle(vehicle) {
-  const index = selectedVehicles.findIndex(v => v.id === vehicle.id);
+async function toggleVehicle(vehicle) {
+  const vehicleKey = `${vehicle.brand}-${vehicle.model}-${vehicle.Year}`;
+  const index = selectedVehicles.indexOf(vehicleKey);
   
   if (index > -1) {
     selectedVehicles.splice(index, 1);
+    selectedVehiclesData = selectedVehiclesData.filter((v, i) => i !== index);
   } else if (selectedVehicles.length < 3) {
-    selectedVehicles.push(vehicle);
+    selectedVehicles.push(vehicleKey);
+    
+    // Show loading
+    const grid = document.getElementById('comparison-grid');
+    grid.innerHTML = '<div class="skeleton skeleton-card"></div>'.repeat(selectedVehicles.length);
+    
+    // Fetch lifecycle data from API
+    try {
+      const lifecycleData = await api.calculateLifecycle(
+        vehicle.brand,
+        vehicle.model,
+        vehicle.Year,
+        currentCountry,
+        currentYear
+      );
+      
+      selectedVehiclesData.push({
+        ...vehicle,
+        lifecycle: lifecycleData
+      });
+    } catch (error) {
+      console.error('Error fetching lifecycle data:', error);
+      selectedVehicles.pop();
+      showError('Failed to calculate lifecycle emissions. Please try again.');
+      return;
+    }
   }
   
   renderVehicleList();
@@ -108,7 +146,7 @@ function renderComparison() {
   const count = document.getElementById('selected-count');
   count.textContent = selectedVehicles.length;
   
-  if (selectedVehicles.length === 0) {
+  if (selectedVehiclesData.length === 0) {
     grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🚗</div><p>Select up to 3 vehicles to compare</p></div>';
     document.getElementById('charts-section').style.display = 'none';
     return;
@@ -116,35 +154,28 @@ function renderComparison() {
   
   grid.innerHTML = '';
   
-  selectedVehicles.forEach(vehicle => {
+  selectedVehiclesData.forEach((vehicleData, index) => {
     const card = document.createElement('div');
     card.className = 'card comparison-card';
     
-    let value;
-    if (currentUnit === 'g_km') {
-      value = vehicle.lifecycleEmissions.gPerKm;
-    } else if (currentUnit === 'lifetime_kg') {
-      value = vehicle.lifecycleEmissions.lifetimeKg;
-    } else {
-      value = vehicle.lifecycleEmissions.tenYearProjection;
-    }
+    const lifecycle = vehicleData.lifecycle;
     
     card.innerHTML = `
-      <button class="remove-btn" onclick="removeVehicle('${vehicle.id}')">×</button>
-      <h4>${vehicle.brand} ${vehicle.model}</h4>
-      <p><span class="badge badge-${vehicle.powertrain.toLowerCase()}">${vehicle.powertrain}</span> ${vehicle.year}</p>
+      <button class="remove-btn" onclick="removeVehicle(${index})">×</button>
+      <h4>${vehicleData.brand} ${vehicleData.model}</h4>
+      <p><span class="badge badge-${vehicleData.type.toLowerCase()}">${vehicleData.type}</span> ${vehicleData.Year}</p>
       <div class="mt-md">
         <div class="emission-value">
-          <span class="emission-label">Lifecycle</span>
-          <span class="emission-number">${formatLargeNumber(value)}</span>
+          <span class="emission-label">Total Lifecycle</span>
+          <span class="emission-number">${formatEmission(lifecycle.total_g_per_km)} g/km</span>
         </div>
         <div class="emission-value">
           <span class="emission-label">Manufacturing</span>
-          <span class="emission-number">${formatLargeNumber(vehicle.manufacturing.total)}</span>
+          <span class="emission-number">${formatEmission(lifecycle.manufacturing_g_per_km)} g/km</span>
         </div>
         <div class="emission-value">
           <span class="emission-label">Operational</span>
-          <span class="emission-number">${formatLargeNumber(vehicle.operational.fuelEmissions || vehicle.operational.gridIntensity)}</span>
+          <span class="emission-number">${formatEmission(lifecycle.operational_g_per_km)} g/km</span>
         </div>
       </div>
     `;
@@ -156,8 +187,9 @@ function renderComparison() {
 }
 
 // Remove vehicle
-function removeVehicle(id) {
-  selectedVehicles = selectedVehicles.filter(v => v.id !== id);
+function removeVehicle(index) {
+  selectedVehicles.splice(index, 1);
+  selectedVehiclesData.splice(index, 1);
   renderVehicleList();
   renderComparison();
   renderCharts();
@@ -165,7 +197,7 @@ function removeVehicle(id) {
 
 // Render charts
 function renderCharts() {
-  if (selectedVehicles.length === 0) return;
+  if (selectedVehiclesData.length === 0) return;
   
   // Bar chart
   const barCtx = document.getElementById('bar-chart');
@@ -174,10 +206,10 @@ function renderCharts() {
   window.barChart = new Chart(barCtx, {
     type: 'bar',
     data: {
-      labels: selectedVehicles.map(v => `${v.brand} ${v.model}`),
+      labels: selectedVehiclesData.map(v => `${v.brand} ${v.model}`),
       datasets: [{
-        label: 'Lifecycle Emissions (g/km)',
-        data: selectedVehicles.map(v => v.lifecycleEmissions.gPerKm),
+        label: 'Total Lifecycle (g/km)',
+        data: selectedVehiclesData.map(v => v.lifecycle.total_g_per_km),
         backgroundColor: 'rgba(0, 200, 83, 0.6)',
         borderColor: '#00C853',
         borderWidth: 2
@@ -203,16 +235,16 @@ function renderCharts() {
   window.stackedChart = new Chart(stackedCtx, {
     type: 'bar',
     data: {
-      labels: selectedVehicles.map(v => `${v.brand} ${v.model}`),
+      labels: selectedVehiclesData.map(v => `${v.brand} ${v.model}`),
       datasets: [
         {
           label: 'Manufacturing',
-          data: selectedVehicles.map(v => v.manufacturing.total / 200),
+          data: selectedVehiclesData.map(v => v.lifecycle.manufacturing_g_per_km),
           backgroundColor: '#00C853'
         },
         {
           label: 'Operational',
-          data: selectedVehicles.map(v => v.lifecycleEmissions.gPerKm - (v.manufacturing.total / 200)),
+          data: selectedVehiclesData.map(v => v.lifecycle.operational_g_per_km),
           backgroundColor: '#69F0AE'
         }
       ]
@@ -234,11 +266,11 @@ function renderCharts() {
   const donutContainer = document.getElementById('donut-charts');
   donutContainer.innerHTML = '';
   
-  selectedVehicles.forEach((vehicle, index) => {
+  selectedVehiclesData.forEach((vehicleData, index) => {
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
-      <h5 class="mb-md">${vehicle.brand} ${vehicle.model}</h5>
+      <h5 class="mb-md">${vehicleData.brand} ${vehicleData.model}</h5>
       <canvas id="donut-${index}"></canvas>
     `;
     donutContainer.appendChild(card);
@@ -247,10 +279,13 @@ function renderCharts() {
     new Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: ['Glider', 'Battery', 'Fluids'],
+        labels: ['Manufacturing', 'Operational'],
         datasets: [{
-          data: [vehicle.manufacturing.glider, vehicle.manufacturing.battery, vehicle.manufacturing.fluids],
-          backgroundColor: ['#00C853', '#69F0AE', '#4CAF50']
+          data: [
+            vehicleData.lifecycle.manufacturing_g_per_km,
+            vehicleData.lifecycle.operational_g_per_km
+          ],
+          backgroundColor: ['#00C853', '#69F0AE']
         }]
       },
       options: {
@@ -264,22 +299,53 @@ function renderCharts() {
   });
 }
 
+// Update country and year
+function updateCountryYear() {
+  const countrySelect = document.getElementById('country-filter');
+  if (countrySelect) {
+    currentCountry = countrySelect.value || 'US';
+  }
+  
+  // Reload selected vehicles with new country/year
+  if (selectedVehicles.length > 0) {
+    const tempSelected = [...selectedVehicles];
+    selectedVehicles = [];
+    selectedVehiclesData = [];
+    
+    tempSelected.forEach(async (vehicleKey) => {
+      const [brand, model, year] = vehicleKey.split('-');
+      const vehicle = vehicles.find(v => 
+        v.brand === brand && v.model === model && v.Year == year
+      );
+      if (vehicle) {
+        await toggleVehicle(vehicle);
+      }
+    });
+  }
+}
+
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
   loadVehicles();
   
   // Filter changes
   document.querySelectorAll('.filter-select').forEach(select => {
-    select.addEventListener('change', renderVehicleList);
+    select.addEventListener('change', () => {
+      if (select.id === 'country-filter') {
+        updateCountryYear();
+      } else {
+        renderVehicleList();
+      }
+    });
   });
   
-  // Unit toggle
+  // Unit toggle (future enhancement)
   document.querySelectorAll('.unit-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.unit-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentUnit = btn.dataset.unit;
-      renderComparison();
+      // Future: recalculate values based on unit
     });
   });
 });

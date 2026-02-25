@@ -1,0 +1,66 @@
+.vehicle-preview {
+  margin-top: var(--spacing-md);
+  min-height: 80px;
+}
+
+.selected-vehicle {
+  padding: var(--spacing-sm);
+  background-color: rgba(0, 200, 83, 0.1);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-eco-green);
+}
+
+.selected-vehicle h5 {
+  margin-bottom: 0.5rem;
+  color: var(--color-eco-green);
+}
+
+.break-even-display {
+  text-align: center;
+  padding: var(--spacing-xl) 0;
+}
+
+.break-even-value {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.big-number {
+  font-size: 4rem;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-eco-green);
+  line-height: 1;
+}
+
+.unit {
+  font-size: 1.25rem;
+  color: var(--color-text-secondary);
+}
+
+.comparison-row {
+  margin-bottom: var(--spacing-md);
+}
+
+.comparison-row h5 {
+  margin-bottom: var(--spacing-sm);
+  color: var(--color-eco-green);
+}
+
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.metric-row:last-child {
+  border-bottom: none;
+}
+
+@media (max-width: 768px) {
+  .big-number {
+    font-size: 2.5rem;
+  }
+}

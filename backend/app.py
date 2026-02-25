@@ -1,19 +1,39 @@
 import os
-import json
 from flask import Flask, request, jsonify
-from engine import get_vehicle, calculate_lifecycle
 from flask_cors import CORS
+
+from engine import get_vehicle, calculate_lifecycle
+from reccomendation import recommend_vehicle
+from break_even import break_even_km
+from greenwashing import detect_greenwashing
+from carbon_index import carbon_score
+from annual_impact import annual_emissions
+from grid_sensitivity import grid_sensitivity
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(BASE_DIR)
+
+# ==================================================
+# HEALTH CHECK
+# ==================================================
+@app.route("/")
+def home():
+    return jsonify({"status": "CarbonWise API Running"})
 
 
-# --------------------------------------------------
+# ==================================================
 # VEHICLE DETAIL
-# --------------------------------------------------
+# ==================================================
+# ==================================================
+# GET ALL VEHICLES (FOR FRONTEND LIST)
+# ==================================================
+@app.route("/vehicles")
+def vehicles_list():
+
+    vehicles = get_vehicle({})  # empty filter = all vehicles
+
+    return jsonify(vehicles)
 @app.route("/vehicle-detail")
 def vehicle_detail():
 
@@ -36,9 +56,46 @@ def vehicle_detail():
     return jsonify(vehicles[0])
 
 
-# --------------------------------------------------
+# ==================================================
+# LIFECYCLE CALCULATION
+# ==================================================
+@app.route("/lifecycle", methods=["POST"])
+def lifecycle():
+
+    data = request.json
+    brand = data.get("brand")
+    model = data.get("model")
+    year_vehicle = data.get("vehicle_year")
+    country = data.get("country")
+    grid_year = data.get("grid_year")
+
+    print(f"Lifecycle request: brand={brand}, model={model}, year={year_vehicle}, country={country}, grid_year={grid_year}")
+
+    if not all([brand, model, year_vehicle, country, grid_year]):
+        return jsonify({"error": "Missing parameters"})
+
+    vehicles = get_vehicle({
+        "brand": brand,
+        "model": model,
+        "Year": year_vehicle
+    })
+
+    if not vehicles:
+        print(f"Vehicle not found: {brand} {model} {year_vehicle}")
+        return jsonify({"error": "Vehicle not found"})
+
+    print(f"Found vehicle: {vehicles[0].get('model')} - Type: {vehicles[0].get('type')}")
+    
+    result = calculate_lifecycle(vehicles[0], country, grid_year)
+    
+    print(f"Lifecycle result: {result}")
+
+    return jsonify(result)
+
+
+# ==================================================
 # MULTI VEHICLE COMPARE
-# --------------------------------------------------
+# ==================================================
 @app.route("/compare-multiple", methods=["POST"])
 def compare_multiple():
 
@@ -62,71 +119,200 @@ def compare_multiple():
 
         if vehicles:
             result = calculate_lifecycle(vehicles[0], country, year)
+
             if "error" not in result:
                 results.append(result)
 
     return jsonify(results)
 
 
-# --------------------------------------------------
-# RECOMMENDATION ENGINE (TOP 3 + BUDGET FILTER)
-# --------------------------------------------------
+# ==================================================
+# RECOMMENDATION MODULE
+# ==================================================
 @app.route("/recommend", methods=["POST"])
 def recommend():
 
     data = request.json
+
+    result = recommend_vehicle(
+        daily_km=data.get("daily_km"),
+        years=data.get("years"),
+        body_type=data.get("filters", {}).get("bodyType"),
+        powertrain=data.get("filters", {}).get("powertrain"),
+        country=data.get("country", "US"),
+        grid_year=data.get("grid_year", 2023)
+    )
+
+    return jsonify(result)
+
+
+# ==================================================
+# BREAK EVEN MODULE
+# ==================================================
+@app.route("/break-even", methods=["POST"])
+def break_even():
+
+    data = request.json
+
     country = data.get("country")
     year = data.get("year")
-    filters = data.get("filters", {})
 
-    if not all([country, year]):
+    ev_input = data.get("ev")
+    ice_input = data.get("ice")
+
+    if not all([country, year, ev_input, ice_input]):
         return jsonify({"error": "Missing parameters"})
 
-    price_min = filters.get("priceMin")
-    price_max = filters.get("priceMax")
+    ev_vehicle = get_vehicle(ev_input)
+    ice_vehicle = get_vehicle(ice_input)
 
-    vehicles = get_vehicle(filters)
+    if not ev_vehicle or not ice_vehicle:
+        return jsonify({"error": "Vehicle not found"})
 
-    results = []
+    result = break_even_km(
+        ev_vehicle[0],
+        ice_vehicle[0],
+        country,
+        year
+    )
 
-    for v in vehicles:
+    return jsonify(result)
 
-        # Apply budget filtering safely
-        if price_min and v.get("price") and v["price"] < price_min:
-            continue
-        if price_max and v.get("price") and v["price"] > price_max:
-            continue
 
-        lifecycle = calculate_lifecycle(v, country, year)
+# ==================================================
+# GREENWASHING ANALYSIS
+# ==================================================
+@app.route("/greenwashing", methods=["POST"])
+def greenwashing():
 
-        if "error" not in lifecycle:
-            results.append(lifecycle)
+    data = request.json
 
-    if not results:
-        return jsonify({"error": "No vehicles found"})
+    lifecycle = data.get("lifecycle")
+    vehicle_meta = data.get("vehicle")
 
-    # Sort by lowest lifecycle emissions
-    results.sort(key=lambda x: x["total_g_per_km"])
+    if not all([lifecycle, vehicle_meta]):
+        return jsonify({"error": "Missing parameters"})
 
-    # Return top 3
-    return jsonify({
-        "recommended": results[:3],
-        "total_vehicles_checked": len(results)
+    result = detect_greenwashing(lifecycle, vehicle_meta)
+
+    return jsonify(result)
+
+
+# ==================================================
+# CARBON SCORE MODULE
+# ==================================================
+@app.route("/carbon-score", methods=["POST"])
+def carbon_score_route():
+
+    data = request.json
+    total_g_per_km = data.get("total_g_per_km")
+
+    if total_g_per_km is None:
+        return jsonify({"error": "Missing emissions value"})
+
+    result = carbon_score(total_g_per_km)
+
+    return jsonify(result)
+
+
+# ==================================================
+# ANNUAL IMPACT MODULE
+# ==================================================
+@app.route("/annual-impact", methods=["POST"])
+def annual_impact():
+
+    data = request.json
+
+    total_g_per_km = data.get("total_g_per_km")
+    annual_km = data.get("annual_km")
+
+    if not all([total_g_per_km, annual_km]):
+        return jsonify({"error": "Missing parameters"})
+
+    result = annual_emissions(total_g_per_km, annual_km)
+
+    return jsonify(result)
+
+
+# ==================================================
+# GRID SENSITIVITY MODULE
+# ==================================================
+@app.route("/grid-sensitivity", methods=["POST"])
+def grid_sensitivity_route():
+
+    data = request.json
+
+    brand = data.get("brand")
+    model = data.get("model")
+    vehicle_year = data.get("vehicle_year")
+    countries = data.get("countries")
+    year = data.get("year")
+
+    if not all([brand, model, vehicle_year, countries, year]):
+        return jsonify({"error": "Missing parameters"})
+
+    vehicles = get_vehicle({
+        "brand": brand,
+        "model": model,
+        "Year": vehicle_year
     })
 
+    if not vehicles:
+        return jsonify({"error": "Vehicle not found"})
 
-# --------------------------------------------------
+    result = grid_sensitivity(
+        vehicles[0],
+        countries,
+        year
+    )
+
+    return jsonify(result)
+
+
+# ==================================================
 # METHODOLOGY
-# --------------------------------------------------
+# ==================================================
 @app.route("/methodology")
 def methodology():
 
     return jsonify({
-        "operational_model": "GREET1 Passenger WTW (ICE/HEV/PHEV) + Ember Grid (EV)",
-        "manufacturing_model": "GREET2 2025 Vehicle-Cycle Model",
-        "grid_data": "Ember Electricity Data + T&D Loss Correction",
-        "lifetime_km": 278600
+        "platform": "CarbonWise Lifecycle Intelligence",
+        "operational_model": "GREET1 Passenger WTW + Ember Grid",
+        "manufacturing_model": "GREET2 Vehicle-Cycle Model",
+        "ranking_basis": "Lifecycle CO2e",
+        "financial_factors": "Excluded"
     })
+
+
+# ==================================================
+# GRID DATA (FOR GRID INSIGHTS PAGE)
+# ==================================================
+@app.route("/grid-data")
+def grid_data():
+
+    import json
+    import os
+
+    # Load cleaned grid master data
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    grid_path = os.path.join(base_dir, "..", "data", "grid_master_v2_2026_clean.json")
+    
+    try:
+        with open(grid_path, "r", encoding="utf-8") as f:
+            grid_data = json.load(f)
+        return jsonify(grid_data)
+    except FileNotFoundError:
+        # Fallback to original file if clean file doesn't exist
+        grid_path = os.path.join(base_dir, "..", "data", "grid_master_v2_2026.json")
+        with open(grid_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            # Replace NaN with null for valid JSON
+            content = content.replace(': NaN', ': null')
+            content = content.replace(':NaN', ':null')
+            grid_data = json.loads(content)
+        return jsonify(grid_data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":

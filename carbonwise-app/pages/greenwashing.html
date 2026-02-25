@@ -3,14 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Grid Insights - CarbonWise</title>
+  <title>Greenwashing Detector - CarbonWise</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Poppins:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../styles/variables.css">
   <link rel="stylesheet" href="../styles/reset.css">
   <link rel="stylesheet" href="../styles/components.css">
   <link rel="stylesheet" href="../styles/layout.css">
-  <link rel="stylesheet" href="../styles/grid.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="../styles/greenwashing.css">
 </head>
 <body>
   <nav class="nav">
@@ -38,54 +37,74 @@
 
   <main>
     <div class="container">
-      <h1 class="text-center mb-lg">Grid Emissions Insights</h1>
+      <h1 class="text-center mb-md">Greenwashing Detector</h1>
+      <p class="text-center text-secondary mb-lg">Analyze vehicle environmental claims for accuracy and transparency</p>
       
-      <div class="card mb-lg">
-        <div class="flex-between mb-md">
-          <div class="form-group" style="margin: 0; flex: 1; max-width: 300px;">
-            <label for="country-select">Select Country</label>
-            <select id="country-select" class="filter-select">
+      <section class="card mb-lg">
+        <h3 class="mb-md">Select Vehicle to Analyze</h3>
+        <div class="grid grid-3">
+          <div class="form-group">
+            <label for="brand">Brand</label>
+            <select id="brand" class="filter-select">
+              <option value="">Select Brand</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="model">Model</label>
+            <select id="model" class="filter-select">
+              <option value="">Select Model</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="year">Year</label>
+            <select id="year" class="filter-select">
+              <option value="">Select Year</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-2 mt-md">
+          <div class="form-group">
+            <label for="country">Country</label>
+            <select id="country" class="filter-select">
               <option value="US">United States</option>
               <option value="DE">Germany</option>
               <option value="FR">France</option>
               <option value="UK">United Kingdom</option>
-              <option value="CN">China</option>
-              <option value="JP">Japan</option>
-              <option value="IN">India</option>
-              <option value="CA">Canada</option>
-              <option value="AU">Australia</option>
-              <option value="BR">Brazil</option>
             </select>
           </div>
-          <div class="form-group" style="margin: 0;">
-            <label>&nbsp;</label>
-            <label class="toggle-label">
-              <input type="checkbox" id="forecast-toggle">
-              <span>Show Forecast</span>
-            </label>
+          <div class="form-group">
+            <label for="grid-year">Grid Year</label>
+            <input type="number" id="grid-year" value="2024" class="filter-select">
           </div>
         </div>
-        
-        <canvas id="grid-chart"></canvas>
-      </div>
+        <button class="btn btn-primary mt-md" onclick="analyzeGreenwashing()">Analyze for Greenwashing</button>
+      </section>
 
-      <div class="grid grid-3">
-        <div class="card text-center">
-          <h4 class="text-eco">Generation Intensity</h4>
-          <p class="metric-value" id="gen-intensity">-</p>
-          <p class="metric-unit">g CO₂/kWh</p>
+      <section id="results" style="display: none;">
+        <div class="card mb-lg">
+          <div class="greenwashing-header">
+            <h3>Analysis Results</h3>
+            <div id="risk-badge" class="risk-badge"></div>
+          </div>
+          <div id="vehicle-info" class="mt-md"></div>
         </div>
-        <div class="card text-center">
-          <h4 class="text-eco">Plug-Adjusted Intensity</h4>
-          <p class="metric-value" id="plug-intensity">-</p>
-          <p class="metric-unit">g CO₂/kWh</p>
+
+        <div class="grid grid-2 mb-lg">
+          <div class="card">
+            <h4 class="mb-md">Greenwashing Indicators</h4>
+            <div id="indicators"></div>
+          </div>
+          <div class="card">
+            <h4 class="mb-md">Transparency Score</h4>
+            <div id="transparency-score"></div>
+          </div>
         </div>
-        <div class="card text-center">
-          <h4 class="text-eco">T&D Loss</h4>
-          <p class="metric-value" id="td-loss">-</p>
-          <p class="metric-unit">%</p>
+
+        <div class="card">
+          <h4 class="mb-md">Detailed Findings</h4>
+          <div id="findings"></div>
         </div>
-      </div>
+      </section>
     </div>
   </main>
 
@@ -113,6 +132,6 @@
   <script src="../scripts/navigation.js"></script>
   <script src="../scripts/formatters.js"></script>
   <script src="../scripts/api.js"></script>
-  <script src="../scripts/grid-insights.js"></script>
+  <script src="../scripts/greenwashing.js"></script>
 </body>
 </html>
