@@ -14,15 +14,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
+  padding: 0 40px; 
+  max-width: 100%;
+  margin: 0; /* adds left spacing from screen edge */
 }
-
 .nav-logo {
   font-size: 1.5rem;
   font-weight: var(--font-weight-bold);
   color: var(--color-eco-green);
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  align-items:center;
+  gap:0.8rem;
   transition: transform var(--transition-fast);
 }
 
@@ -41,7 +44,10 @@
 }
 
 .nav-link {
-  color: var(--color-text-primary);
+  color: var(--color-eco-green);   /* changed to green */
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: 0.4px;
   transition: all var(--transition-fast);
   padding: 0.5rem 1rem;
   border-radius: var(--border-radius);

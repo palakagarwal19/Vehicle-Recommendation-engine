@@ -19,20 +19,22 @@
 
 .filter-select {
   padding: 0.75rem;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: #000000ec; /* pure black */
+  border: 1px solid var(--color-eco-green);
   border-radius: var(--radius-sm);
-  color: var(--color-text-primary);
+  color: var(--color-eco-green); /* green text */
   font-family: var(--font-primary);
   transition: all var(--transition-fast);
 }
-
+.filter-select option {
+  background-color: #000000;  /* black dropdown */
+  color: var(--color-eco-green); /* green text */
+}
 .filter-select:focus {
   outline: none;
   border-color: var(--color-eco-green);
-  box-shadow: 0 0 0 2px rgba(0, 200, 83, 0.2);
+  box-shadow: 0 0 8px rgba(0, 200, 83, 0.4);
 }
-
 /* Vehicle List */
 .vehicle-list {
   display: grid;
