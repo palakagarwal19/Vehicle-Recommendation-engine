@@ -54,6 +54,10 @@ class CarbonWiseAPI {
     });
   }
 
+async getCountries() {
+  return this.request('/countries');
+}
+
   // Compare multiple vehicles
   async compareMultiple(country, year, vehicles) {
     return this.request('/compare-multiple', {
@@ -152,6 +156,11 @@ class CarbonWiseAPI {
   // Get grid data (for grid insights page)
   async getGridData() {
     return this.request('/grid-data');
+  }
+
+  // Get available countries
+  async getCountries() {
+    return this.request('/countries');
   }
 }
 

@@ -10,7 +10,24 @@ async function loadVehicles() {
     console.error('Error loading vehicles:', error);
   }
 }
+async function loadCountries() {
+  try {
+    const countries = await api.getCountries();
+    const select = document.getElementById('country');
 
+    select.innerHTML = '';
+
+    countries.forEach(code => {
+      const option = document.createElement('option');
+      option.value = code;
+      option.textContent = code;   // can later map to full name
+      select.appendChild(option);
+    });
+
+  } catch (error) {
+    console.error('Failed to load countries:', error);
+  }
+}
 function populateFilters() {
   // Get unique brands for EV (only those with electric_wh_per_km) and ICE
   const evBrands = [...new Set(vehicles
@@ -319,6 +336,7 @@ function renderCumulativeChart(result) {
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
   loadVehicles();
+  loadCountries();
   
   document.getElementById('ev-brand').addEventListener('change', () => {
     updateModels('ev');

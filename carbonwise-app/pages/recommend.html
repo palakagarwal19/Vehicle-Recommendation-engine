@@ -44,24 +44,14 @@
           <h3 class="mb-md">Your Criteria</h3>
           <form id="criteria-form">
             <div class="form-group">
-              <label>Budget Range</label>
-              <div class="flex">
-                <input type="number" id="budget-min" placeholder="Min" value="20000">
-                <input type="number" id="budget-max" placeholder="Max" value="50000">
-              </div>
-            </div>
-            <div class="form-group">
               <label>Country</label>
               <select id="country">
-                <option value="US">United States</option>
-                <option value="DE">Germany</option>
-                <option value="FR">France</option>
-                <option value="UK">United Kingdom</option>
+                <option value="">Loading...</option>
               </select>
             </div>
             <div class="form-group">
               <label>Annual km Driven</label>
-              <input type="number" id="annual-km" value="15000">
+              <input type="number" id="annual-km" value="15000" min="1000" max="100000">
             </div>
             <div class="form-group">
               <label>Preferred Powertrain</label>

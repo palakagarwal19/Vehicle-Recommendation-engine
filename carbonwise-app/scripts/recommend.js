@@ -1,4 +1,5 @@
 let vehicles = [];
+let countries = [];
 
 async function loadVehicles() {
   try {
@@ -6,6 +7,84 @@ async function loadVehicles() {
   } catch (error) {
     console.error('Error loading vehicles:', error);
   }
+}
+
+async function loadCountries() {
+  try {
+    const response = await api.getCountries();
+    
+    console.log('Countries API response:', response);
+    
+    // Check if response has error
+    if (response && response.error) {
+      console.error('Error from API:', response.error);
+      loadFallbackCountries();
+      return;
+    }
+    
+    // Check if response is an array
+    if (!Array.isArray(response)) {
+      console.error('Invalid response format (not an array):', response);
+      loadFallbackCountries();
+      return;
+    }
+    
+    if (response.length === 0) {
+      console.error('Empty countries array');
+      loadFallbackCountries();
+      return;
+    }
+    
+    countries = response;
+    const countrySelect = document.getElementById('country');
+    
+    if (!countrySelect) {
+      console.error('Country select element not found');
+      return;
+    }
+    
+    countrySelect.innerHTML = '';
+    
+    countries.forEach(country => {
+      if (country && country.code && country.name) {
+        const option = document.createElement('option');
+        option.value = country.code;
+        option.textContent = country.name;
+        countrySelect.appendChild(option);
+      } else {
+        console.warn('Invalid country object:', country);
+      }
+    });
+    
+    // Set default to US
+    if (countrySelect.querySelector('option[value="US"]')) {
+      countrySelect.value = 'US';
+    }
+    
+    console.log('Successfully loaded', countries.length, 'countries');
+  } catch (error) {
+    console.error('Error loading countries:', error);
+    loadFallbackCountries();
+  }
+}
+
+function loadFallbackCountries() {
+  console.log('Loading fallback countries');
+  const countrySelect = document.getElementById('country');
+  if (!countrySelect) {
+    console.error('Country select element not found for fallback');
+    return;
+  }
+  countrySelect.innerHTML = `
+    <option value="US">United States</option>
+    <option value="DE">Germany</option>
+    <option value="FR">France</option>
+    <option value="UK">United Kingdom</option>
+    <option value="CN">China</option>
+    <option value="JP">Japan</option>
+    <option value="CA">Canada</option>
+    <option value="AU">Australia</option>
+  `;
 }
 
 async function getRecommendations(criteria) {
@@ -96,6 +175,7 @@ function renderRecommendations(recommendations) {
 
 document.addEventListener('DOMContentLoaded', () => {
   loadVehicles();
+  loadCountries();
   
   document.getElementById('criteria-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -107,8 +187,6 @@ document.addEventListener('DOMContentLoaded', () => {
     results.style.display = 'block';
     
     const criteria = {
-      budgetMin: parseInt(document.getElementById('budget-min').value),
-      budgetMax: parseInt(document.getElementById('budget-max').value),
       country: document.getElementById('country').value,
       annualKm: parseInt(document.getElementById('annual-km').value),
       powertrain: document.getElementById('powertrain').value

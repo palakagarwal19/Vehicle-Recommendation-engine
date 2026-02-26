@@ -38,9 +38,9 @@ def recommend_vehicle(
     
     print(f"Filtered to {len(filtered)} vehicles")
     
-    # Limit to first 500 to avoid timeout
+    # Limit to first 1000 to avoid timeout
     results = []
-    for v in filtered[:500]:
+    for v in filtered[:1000]:
         try:
             # For EVs, check if they have required data
             if v.get("type") == "EV" and v.get("electric_wh_per_km") is None:
@@ -78,5 +78,27 @@ def recommend_vehicle(
     # Sort by total emissions
     results.sort(key=lambda x: x["total_g_per_km"])
     
-    print(f"Returning top {top_n} from {len(results)} calculated vehicles")
-    return results[:top_n]
+    # Get diverse recommendations (different powertrains)
+    diverse_results = []
+    powertrains_seen = set()
+    
+    for result in results:
+        pt = result["powertrain"]
+        # Add vehicle if we haven't seen this powertrain yet, or if we need more results
+        if pt not in powertrains_seen or len(diverse_results) < top_n:
+            diverse_results.append(result)
+            powertrains_seen.add(pt)
+        
+        if len(diverse_results) >= top_n:
+            break
+    
+    # If we don't have enough diverse results, fill with best remaining
+    if len(diverse_results) < top_n:
+        for result in results:
+            if result not in diverse_results:
+                diverse_results.append(result)
+            if len(diverse_results) >= top_n:
+                break
+    
+    print(f"Returning {len(diverse_results)} diverse recommendations")
+    return diverse_results[:top_n]

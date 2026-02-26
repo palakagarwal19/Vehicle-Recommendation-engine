@@ -270,6 +270,51 @@ def grid_sensitivity_route():
 
 
 # ==================================================
+# GET AVAILABLE COUNTRIES (FOR DROPDOWNS)
+# ==================================================
+@app.route("/countries")
+def countries_list():
+    # Return a curated list of major countries
+    countries = [
+        {"code": "US", "name": "United States"},
+        {"code": "DE", "name": "Germany"},
+        {"code": "FR", "name": "France"},
+        {"code": "UK", "name": "United Kingdom"},
+        {"code": "CN", "name": "China"},
+        {"code": "JP", "name": "Japan"},
+        {"code": "IN", "name": "India"},
+        {"code": "CA", "name": "Canada"},
+        {"code": "AU", "name": "Australia"},
+        {"code": "BR", "name": "Brazil"},
+        {"code": "IT", "name": "Italy"},
+        {"code": "ES", "name": "Spain"},
+        {"code": "MX", "name": "Mexico"},
+        {"code": "KR", "name": "South Korea"},
+        {"code": "NL", "name": "Netherlands"},
+        {"code": "CH", "name": "Switzerland"},
+        {"code": "PL", "name": "Poland"},
+        {"code": "BE", "name": "Belgium"},
+        {"code": "SE", "name": "Sweden"},
+        {"code": "NO", "name": "Norway"},
+        {"code": "AT", "name": "Austria"},
+        {"code": "DK", "name": "Denmark"},
+        {"code": "FI", "name": "Finland"},
+        {"code": "PT", "name": "Portugal"},
+        {"code": "GR", "name": "Greece"},
+        {"code": "CZ", "name": "Czech Republic"},
+        {"code": "NZ", "name": "New Zealand"},
+        {"code": "IE", "name": "Ireland"},
+        {"code": "SG", "name": "Singapore"},
+        {"code": "TH", "name": "Thailand"},
+        {"code": "ZA", "name": "South Africa"},
+        {"code": "AR", "name": "Argentina"},
+        {"code": "CL", "name": "Chile"}
+    ]
+    
+    return jsonify(countries)
+
+
+# ==================================================
 # METHODOLOGY
 # ==================================================
 @app.route("/methodology")
@@ -282,7 +327,28 @@ def methodology():
         "ranking_basis": "Lifecycle CO2e",
         "financial_factors": "Excluded"
     })
+# ==================================================
+# GET AVAILABLE COUNTRIES (FROM GRID DATA)
+# ==================================================
+@app.route("/countries")
+def get_countries():
 
+    import json
+    import os
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    grid_path = os.path.join(base_dir, "..", "data", "grid_master_v2_2026_clean.json")
+
+    try:
+        with open(grid_path, "r", encoding="utf-8") as f:
+            grid_data = json.load(f)
+
+        countries = sorted(list(set(item["country"] for item in grid_data if item.get("country"))))
+
+        return jsonify(countries)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ==================================================
 # GRID DATA (FOR GRID INSIGHTS PAGE)
