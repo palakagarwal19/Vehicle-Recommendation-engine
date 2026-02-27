@@ -24,6 +24,39 @@ async function loadVehicles() {
   }
 }
 
+async function loadCountries() {
+  try {
+    const countries = await api.getCountries();
+    const countrySelect = document.getElementById('country-filter');
+    
+    if (!countrySelect) {
+      console.error('Country select element not found');
+      return;
+    }
+    
+    countrySelect.innerHTML = '';
+    
+    countries.forEach(country => {
+      if (country && country.code && country.name) {
+        const option = document.createElement('option');
+        option.value = country.code;
+        option.textContent = country.name;
+        countrySelect.appendChild(option);
+      }
+    });
+    
+    // Set default to US
+    if (countrySelect.querySelector('option[value="US"]')) {
+      countrySelect.value = 'US';
+    }
+    
+    console.log('Successfully loaded', countries.length, 'countries');
+  } catch (error) {
+    console.error('Error loading countries:', error);
+    // Keep the hardcoded options as fallback
+  }
+}
+
 // Show error message
 function showError(message) {
   const list = document.getElementById('vehicle-list');
@@ -36,6 +69,7 @@ function populateFilters() {
   const years = [...new Set(vehicles.map(v => v.Year))].sort((a, b) => b - a);
   
   const brandFilter = document.getElementById('brand-filter');
+  brandFilter.innerHTML = '<option value="">All Brands</option>';
   brands.forEach(brand => {
     const option = document.createElement('option');
     option.value = brand;
@@ -44,25 +78,60 @@ function populateFilters() {
   });
   
   const yearFilter = document.getElementById('year-filter');
+  yearFilter.innerHTML = '<option value="">All Years</option>';
   years.forEach(year => {
     const option = document.createElement('option');
     option.value = year;
     option.textContent = year;
     yearFilter.appendChild(option);
   });
+  
+  // Also populate models initially (all models)
+  populateModels();
+}
+
+function populateModels() {
+  const brand = document.getElementById('brand-filter').value;
+  const modelFilter = document.getElementById('model-filter');
+  
+  modelFilter.innerHTML = '<option value="">All Models</option>';
+  
+  if (!brand) {
+    // If no brand selected, show all models
+    const models = [...new Set(vehicles.map(v => v.model))].sort();
+    models.forEach(model => {
+      const option = document.createElement('option');
+      option.value = model;
+      option.textContent = model;
+      modelFilter.appendChild(option);
+    });
+  } else {
+    // Show models for selected brand
+    const models = [...new Set(vehicles
+      .filter(v => v.brand === brand)
+      .map(v => v.model))].sort();
+    models.forEach(model => {
+      const option = document.createElement('option');
+      option.value = model;
+      option.textContent = model;
+      modelFilter.appendChild(option);
+    });
+  }
 }
 
 // Filter vehicles
 function getFilteredVehicles() {
   const brand = document.getElementById('brand-filter').value;
+  const model = document.getElementById('model-filter').value;
   const year = document.getElementById('year-filter').value;
   const powertrain = document.getElementById('powertrain-filter').value;
   
   return vehicles.filter(v => {
     return (!brand || v.brand === brand) &&
+           (!model || v.model === model) &&
            (!year || v.Year == year) &&
            (!powertrain || v.type === powertrain);
-  }).slice(0, 100); // Limit to 100 for performance
+  }); // Removed limit to show all vehicles
 }
 
 // Render vehicle list
@@ -327,17 +396,19 @@ function updateCountryYear() {
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
   loadVehicles();
+  loadCountries();
   
   // Filter changes
-  document.querySelectorAll('.filter-select').forEach(select => {
-    select.addEventListener('change', () => {
-      if (select.id === 'country-filter') {
-        updateCountryYear();
-      } else {
-        renderVehicleList();
-      }
-    });
+  document.getElementById('brand-filter').addEventListener('change', () => {
+    populateModels();
+    renderVehicleList();
   });
+  
+  document.getElementById('model-filter').addEventListener('change', renderVehicleList);
+  document.getElementById('year-filter').addEventListener('change', renderVehicleList);
+  document.getElementById('powertrain-filter').addEventListener('change', renderVehicleList);
+  
+  document.getElementById('country-filter').addEventListener('change', updateCountryYear);
   
   // Unit toggle (future enhancement)
   document.querySelectorAll('.unit-btn').forEach(btn => {

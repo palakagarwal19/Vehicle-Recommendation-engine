@@ -89,6 +89,8 @@ function loadFallbackCountries() {
 
 async function getRecommendations(criteria) {
   try {
+    console.log('Getting recommendations with criteria:', criteria);
+    
     // Calculate daily km from annual km
     const dailyKm = criteria.annualKm / 365;
     const years = 10; // Default 10 years
@@ -98,8 +100,19 @@ async function getRecommendations(criteria) {
       powertrain: criteria.powertrain || null
     }, criteria.country || 'US', 2023);
     
+    console.log('API response:', recommendations);
+    
     if (recommendations.error) {
       throw new Error(recommendations.error);
+    }
+    
+    if (!Array.isArray(recommendations)) {
+      throw new Error('Invalid response format from API');
+    }
+    
+    if (recommendations.length === 0) {
+      console.log('No recommendations returned from API');
+      return [];
     }
     
     // Recommendations are already sorted by emissions
@@ -115,17 +128,22 @@ async function getRecommendations(criteria) {
       if (rec.total_g_per_km < 100) reasons.push('Excellent lifecycle efficiency');
       if (rec.operational_g_per_km < 50) reasons.push('Low operational emissions');
       
+      // Add powertrain-specific reasons
+      if (rec.powertrain === 'HEV') reasons.push('Hybrid efficiency reduces fuel consumption');
+      if (rec.powertrain === 'PHEV') reasons.push('Electric mode for short trips, hybrid for long trips');
+      if (rec.powertrain === 'ICE' && rec.total_g_per_km < 200) reasons.push('Efficient conventional engine');
+      
       return {
         vehicle: rec,
         ranking: index + 1,
         score: Math.round(score),
         scoreClass,
-        reasons
+        reasons: reasons.length > 0 ? reasons : ['Low overall emissions compared to alternatives']
       };
     });
   } catch (error) {
     console.error('Error getting recommendations:', error);
-    return [];
+    throw error; // Re-throw to handle in the calling function
   }
 }
 
@@ -140,7 +158,21 @@ function renderRecommendations(recommendations) {
   const results = document.getElementById('results');
   
   if (recommendations.length === 0) {
-    container.innerHTML = '<p class="text-center">No vehicles match your criteria. Try adjusting your filters.</p>';
+    container.innerHTML = `
+      <div class="text-center" style="padding: 2rem;">
+        <p style="color: var(--color-text-secondary); margin-bottom: 1rem;">
+          No vehicles match your criteria. This could be due to:
+        </p>
+        <ul style="text-align: left; color: var(--color-text-secondary); margin: 0 auto; max-width: 300px;">
+          <li>Limited data for the selected powertrain</li>
+          <li>No vehicles available in the selected country</li>
+          <li>Backend processing issues</li>
+        </ul>
+        <p style="color: var(--color-text-secondary); margin-top: 1rem;">
+          Try selecting "Any" for powertrain or a different country.
+        </p>
+      </div>
+    `;
     results.style.display = 'block';
     return;
   }
@@ -192,7 +224,22 @@ document.addEventListener('DOMContentLoaded', () => {
       powertrain: document.getElementById('powertrain').value
     };
     
-    const recommendations = await getRecommendations(criteria);
-    renderRecommendations(recommendations);
+    console.log('Form submitted with criteria:', criteria);
+    
+    try {
+      const recommendations = await getRecommendations(criteria);
+      renderRecommendations(recommendations);
+    } catch (error) {
+      console.error('Failed to get recommendations:', error);
+      container.innerHTML = `
+        <div class="text-center" style="padding: 2rem; color: #FF5252;">
+          <p><strong>Error getting recommendations</strong></p>
+          <p>${error.message}</p>
+          <p style="margin-top: 1rem; color: var(--color-text-secondary);">
+            Please check that the backend server is running and try again.
+          </p>
+        </div>
+      `;
+    }
   });
 });

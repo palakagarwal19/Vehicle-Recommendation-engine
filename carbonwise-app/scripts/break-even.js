@@ -17,15 +17,31 @@ async function loadCountries() {
 
     select.innerHTML = '';
 
-    countries.forEach(code => {
-      const option = document.createElement('option');
-      option.value = code;
-      option.textContent = code;   // can later map to full name
-      select.appendChild(option);
+    countries.forEach(country => {
+      if (country && country.code && country.name) {
+        const option = document.createElement('option');
+        option.value = country.code;
+        option.textContent = country.name;
+        select.appendChild(option);
+      }
     });
+
+    // Set default to US
+    if (select.querySelector('option[value="US"]')) {
+      select.value = 'US';
+    }
 
   } catch (error) {
     console.error('Failed to load countries:', error);
+    // Add fallback countries
+    select.innerHTML = `
+      <option value="US">United States</option>
+      <option value="DE">Germany</option>
+      <option value="FR">France</option>
+      <option value="UK">United Kingdom</option>
+      <option value="CN">China</option>
+      <option value="JP">Japan</option>
+    `;
   }
 }
 function populateFilters() {
@@ -254,23 +270,30 @@ function renderCumulativeChart(result) {
   const evData = [];
   const iceData = [];
   
+  // Get total manufacturing emissions in kg from backend
+  const evManufTotalKg = result.ev_manufacturing_total_kg || (result.ev_manufacturing_g_per_km * 278600 / 1000);
+  const iceManufTotalKg = result.ice_manufacturing_total_kg || (result.ice_manufacturing_g_per_km * 278600 / 1000);
+  
   for (let i = 0; i <= points; i++) {
     const km = i * step;
-    labels.push(km / 1000); // Convert to thousands
+    labels.push(km / 1000); // Convert to thousands for display
     
-    // Cumulative emissions = manufacturing + (operational * km)
+    // Cumulative emissions = total manufacturing (kg) + (operational g/km * km / 1000)
+    // Formula: Total emissions (kg) = Manufacturing (kg) + (Operational (g/km) × Distance (km) / 1000)
     evData.push(
-      (result.ev_manufacturing_g_per_km * 278600 / 1000) + // Manufacturing total
-      (result.ev_operational_g_per_km * km / 1000) // Operational cumulative
+      evManufTotalKg + (result.ev_operational_g_per_km * km / 1000)
     );
     
     iceData.push(
-      (result.ice_manufacturing_g_per_km * 278600 / 1000) +
-      (result.ice_operational_g_per_km * km / 1000)
+      iceManufTotalKg + (result.ice_operational_g_per_km * km / 1000)
     );
   }
   
   if (window.cumulativeChart) window.cumulativeChart.destroy();
+  
+  // Calculate break-even point for annotation
+  const breakEvenKm = result.break_even_km;
+  const breakEvenEmissions = evManufTotalKg + (result.ev_operational_g_per_km * breakEvenKm / 1000);
   
   window.cumulativeChart = new Chart(ctx, {
     type: 'line',
@@ -283,7 +306,8 @@ function renderCumulativeChart(result) {
           borderColor: '#00C853',
           backgroundColor: 'rgba(0, 200, 83, 0.1)',
           tension: 0.4,
-          fill: true
+          fill: true,
+          borderWidth: 2
         },
         {
           label: 'ICE Total Emissions',
@@ -291,7 +315,17 @@ function renderCumulativeChart(result) {
           borderColor: '#FF5252',
           backgroundColor: 'rgba(255, 82, 82, 0.1)',
           tension: 0.4,
-          fill: true
+          fill: true,
+          borderWidth: 2
+        },
+        {
+          label: 'Break-Even Point',
+          data: [{x: breakEvenKm / 1000, y: breakEvenEmissions}],
+          pointRadius: 8,
+          pointBackgroundColor: '#FFD700',
+          pointBorderColor: '#FFA500',
+          pointBorderWidth: 2,
+          showLine: false
         }
       ]
     },
@@ -303,6 +337,9 @@ function renderCumulativeChart(result) {
         tooltip: {
           callbacks: {
             label: function(context) {
+              if (context.datasetIndex === 2) {
+                return 'Break-Even: ' + formatLargeNumber(breakEvenKm) + ' km (' + context.parsed.y.toFixed(0) + ' kg CO₂)';
+              }
               return context.dataset.label + ': ' + context.parsed.y.toFixed(0) + ' kg CO₂';
             }
           }
@@ -320,6 +357,7 @@ function renderCumulativeChart(result) {
           }
         },
         x: {
+          type: 'linear',
           grid: { display: false },
           ticks: { color: '#B0B0B0' },
           title: {

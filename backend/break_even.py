@@ -56,9 +56,11 @@ def break_even_km(ev_vehicle, ice_vehicle, country, year):
             "break_even_km": None,
             "message": "EV does not outperform ICE operationally in this grid",
             "ev_manufacturing_g_per_km": ev_lc["manufacturing_g_per_km"],
+            "ev_manufacturing_total_kg": ev_manuf_total_kg,
             "ev_operational_g_per_km": ev_op,
             "ev_total_g_per_km": ev_lc["total_g_per_km"],
             "ice_manufacturing_g_per_km": ice_lc["manufacturing_g_per_km"],
+            "ice_manufacturing_total_kg": ice_manuf_total_kg,
             "ice_operational_g_per_km": ice_op,
             "ice_total_g_per_km": ice_lc["total_g_per_km"]
         }
@@ -72,9 +74,11 @@ def break_even_km(ev_vehicle, ice_vehicle, country, year):
         "manufacturing_difference_g_per_km": round(delta_manuf / 278600, 2),  # For display purposes
         "operational_advantage_g_per_km": round(delta_operational, 2),
         "ev_manufacturing_g_per_km": ev_lc["manufacturing_g_per_km"],
+        "ev_manufacturing_total_kg": ev_manuf_total_kg,
         "ev_operational_g_per_km": ev_op,
         "ev_total_g_per_km": ev_lc["total_g_per_km"],
         "ice_manufacturing_g_per_km": ice_lc["manufacturing_g_per_km"],
+        "ice_manufacturing_total_kg": ice_manuf_total_kg,
         "ice_operational_g_per_km": ice_op,
         "ice_total_g_per_km": ice_lc["total_g_per_km"]
     }

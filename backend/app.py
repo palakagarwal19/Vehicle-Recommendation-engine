@@ -327,28 +327,7 @@ def methodology():
         "ranking_basis": "Lifecycle CO2e",
         "financial_factors": "Excluded"
     })
-# ==================================================
-# GET AVAILABLE COUNTRIES (FROM GRID DATA)
-# ==================================================
-@app.route("/countries")
-def get_countries():
 
-    import json
-    import os
-
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    grid_path = os.path.join(base_dir, "..", "data", "grid_master_v2_2026_clean.json")
-
-    try:
-        with open(grid_path, "r", encoding="utf-8") as f:
-            grid_data = json.load(f)
-
-        countries = sorted(list(set(item["country"] for item in grid_data if item.get("country"))))
-
-        return jsonify(countries)
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 # ==================================================
 # GRID DATA (FOR GRID INSIGHTS PAGE)
