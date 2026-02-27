@@ -98,12 +98,13 @@ async getCountries() {
   }
 
   // Detect greenwashing
-  async detectGreenwashing(lifecycle, vehicleMeta) {
+  async detectGreenwashing(lifecycle, vehicleMeta, searchWeb = false) {
     return this.request('/greenwashing', {
       method: 'POST',
       body: JSON.stringify({
         lifecycle,
-        vehicle: vehicleMeta
+        vehicle: vehicleMeta,
+        search_web: searchWeb
       })
     });
   }

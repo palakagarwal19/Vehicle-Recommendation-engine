@@ -189,11 +189,12 @@ def greenwashing():
 
     lifecycle = data.get("lifecycle")
     vehicle_meta = data.get("vehicle")
+    search_web = data.get("search_web", False)  # Optional: enable web search
 
     if not all([lifecycle, vehicle_meta]):
         return jsonify({"error": "Missing parameters"})
 
-    result = detect_greenwashing(lifecycle, vehicle_meta)
+    result = detect_greenwashing(lifecycle, vehicle_meta, search_web=search_web)
 
     return jsonify(result)
 
