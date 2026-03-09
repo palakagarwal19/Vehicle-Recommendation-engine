@@ -1,0 +1,71 @@
+.vehicle-card {
+  background: white;
+  border: 2px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  padding: 1rem;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.vehicle-card-clickable {
+  cursor: pointer;
+}
+
+.vehicle-card-clickable:hover {
+  border-color: var(--primary-color, #2563eb);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.vehicle-card-selected {
+  border-color: var(--primary-color, #2563eb);
+  background-color: #eff6ff;
+}
+
+.vehicle-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.vehicle-card-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary, #1f2937);
+}
+
+.vehicle-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.vehicle-card-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.vehicle-card-label {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+.vehicle-card-value {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary, #1f2937);
+}
+
+.vehicle-card-selected-indicator {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background-color: var(--primary-color, #2563eb);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}

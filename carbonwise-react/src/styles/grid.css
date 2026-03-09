@@ -1,0 +1,29 @@
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  color: var(--color-text-primary);
+}
+
+.toggle-label input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.metric-value {
+  font-size: 2.5rem;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-eco-green);
+  margin: var(--spacing-sm) 0;
+}
+
+.metric-unit {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+#grid-chart {
+  max-height: 400px;
+}

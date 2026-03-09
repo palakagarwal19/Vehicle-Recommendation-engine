@@ -1,0 +1,111 @@
+.validation-badge {
+  padding: var(--spacing-lg);
+}
+
+.badge-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto var(--spacing-md);
+  background-color: var(--color-eco-green);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  color: var(--color-primary-black);
+  font-weight: var(--font-weight-bold);
+}
+
+.accordion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.accordion-item {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.accordion-header {
+  width: 100%;
+  padding: var(--spacing-md);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: none;
+  color: var(--color-text-primary);
+  font-size: 1.125rem;
+  font-weight: var(--font-weight-bold);
+  text-align: left;
+  transition: all var(--transition-fast);
+}
+
+.accordion-header:hover {
+  background-color: rgba(0, 200, 83, 0.1);
+}
+
+.accordion-icon {
+  font-size: 1.5rem;
+  color: var(--color-eco-green);
+  transition: transform var(--transition-fast);
+}
+
+.accordion-item.active .accordion-icon {
+  transform: rotate(45deg);
+}
+
+.accordion-content {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height var(--transition-normal);
+}
+
+.accordion-item.active .accordion-content {
+  max-height: 1000px;
+  padding: 0 var(--spacing-md) var(--spacing-md);
+}
+
+.accordion-content h4 {
+  color: var(--color-eco-green);
+  margin-top: var(--spacing-sm);
+  margin-bottom: 0.5rem;
+}
+
+.accordion-content ul {
+  list-style: disc;
+  padding-left: var(--spacing-md);
+  color: var(--color-text-secondary);
+}
+
+.accordion-content li {
+  margin-bottom: 0.5rem;
+}
+
+.source-list {
+  list-style: none;
+  padding: 0;
+}
+
+.source-list li {
+  margin-bottom: 0.5rem;
+  padding-left: var(--spacing-md);
+  position: relative;
+}
+
+.source-list li::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: var(--color-eco-green);
+}
+
+.source-list a {
+  color: var(--color-eco-green);
+  transition: color var(--transition-fast);
+}
+
+.source-list a:hover {
+  color: var(--color-soft-green);
+}
