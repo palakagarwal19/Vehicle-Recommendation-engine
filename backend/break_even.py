@@ -5,10 +5,10 @@ from manufacturing import manufacturing_kg
 def break_even_km(ev_vehicle, ice_vehicle, country, year):
 
     # Validate EV has required data
-    if ev_vehicle.get("type") != "EV":
+    if ev_vehicle.get("vehicle_type") != "EV":
         return {"error": "First vehicle must be an EV"}
     
-    if ice_vehicle.get("type") not in ["ICE", "HEV", "PHEV"]:
+    if ice_vehicle.get("vehicle_type") not in ["ICE", "HEV", "PHEV"]:
         return {"error": "Second vehicle must be ICE, HEV, or PHEV"}
     
     # Check if EV has electric consumption data

@@ -22,11 +22,11 @@ Usage
         "manufacturing_g_per_km": 95.4,
     }
 
-    # vehicle_meta comes from the vehicle_clean database table
+    # vehicle_meta comes from the vehicle database table
     vehicle_meta = {
         "brand": "Tesla",
         "model": "Model 3",
-        "powertrain": "EV",   # EV | HEV | PHEV | ICE
+        "vehicle_type": "EV",   # EV | HEV | PHEV | ICE
         "electric": True,
     }
 
@@ -85,7 +85,7 @@ class RiskLevel(str, Enum):
     VIOLATION = "VIOLATION"  # Claim is contradicted by the data; likely illegal.
 
 
-class Powertrain(str, Enum):
+class vehicle_type(str, Enum):
     EV = "EV"
     HEV = "HEV"
     PHEV = "PHEV"
@@ -110,7 +110,7 @@ class GreenwashingReport:
     """Aggregated greenwashing evaluation for a vehicle."""
     brand: str
     model: str
-    powertrain: str
+    vehicle_type: str
     total_g_per_km: float
     operational_g_per_km: float
     manufacturing_g_per_km: float
@@ -120,7 +120,7 @@ class GreenwashingReport:
 
     def summary(self) -> str:
         lines = [
-            f"=== Greenwashing Report: {self.brand} {self.model} ({self.powertrain}) ===",
+            f"=== Greenwashing Report: {self.brand} {self.model} ({self.vehicle_type}) ===",
             f"  Lifecycle total  : {self.total_g_per_km:.1f} g CO₂/km",
             f"  Operational      : {self.operational_g_per_km:.1f} g CO₂/km",
             f"  Manufacturing    : {self.manufacturing_g_per_km:.1f} g CO₂/km",
@@ -170,12 +170,12 @@ def _manufacturing_share(lifecycle: dict) -> float:
     return lifecycle["manufacturing_g_per_km"] / total
 
 
-def _powertrain_enum(raw: str) -> Powertrain:
+def _vehicle_type_enum(raw: str) -> vehicle_type:
     try:
-        return Powertrain(raw.upper())
+        return vehicle_type(raw.upper())
     except ValueError:
         raise ValueError(
-            f"Unknown powertrain '{raw}'. Must be one of: EV, HEV, PHEV, ICE."
+            f"Unknown vehicle_type '{raw}'. Must be one of: EV, HEV, PHEV, ICE."
         )
 
 
@@ -195,13 +195,13 @@ def _check_structural_consistency(
     emissions, or a PHEV claimed as near-zero lifecycle.
     """
     flags: list[str] = []
-    pt = _powertrain_enum(vehicle_meta["powertrain"])
+    pt = _vehicle_type_enum(vehicle_meta["vehicle_type"])
     total = lifecycle["total_g_per_km"]
     operational = lifecycle["operational_g_per_km"]
     manufacturing = lifecycle["manufacturing_g_per_km"]
 
     # 1. Operational emissions should be ~0 for a true BEV.
-    if pt == Powertrain.EV and operational > 10.0:
+    if pt == vehicle_type.EV and operational > 10.0:
         flags.append(
             f"EV with non-trivial operational emissions ({operational:.1f} g/km). "
             "Likely reflects a carbon-intensive grid. Any 'zero emissions' claim must "
@@ -212,7 +212,7 @@ def _check_structural_consistency(
     # 2. Manufacturing dominance for EVs — battery production is the primary
     #    lifecycle hotspot; hiding this behind tailpipe-only figures is a
     #    classic selective-disclosure pattern.
-    if pt == Powertrain.EV and total > 0:
+    if pt == vehicle_type.EV and total > 0:
         mfg_share = _manufacturing_share(lifecycle)
         if mfg_share > 0.70:
             flags.append(
@@ -223,9 +223,9 @@ def _check_structural_consistency(
             )
 
     # 3. PHEV / HEV marketed using only electric-mode figures.
-    if pt in (Powertrain.PHEV, Powertrain.HEV):
+    if pt in (vehicle_type.PHEV, vehicle_type.HEV):
         expected_min = ICE_REFERENCE_LIFECYCLE_G_PER_KM * (
-            1 - (PHEV_LIFECYCLE_REDUCTION_VS_ICE if pt == Powertrain.PHEV else HEV_LIFECYCLE_REDUCTION_VS_ICE)
+            1 - (PHEV_LIFECYCLE_REDUCTION_VS_ICE if pt == vehicle_type.PHEV else HEV_LIFECYCLE_REDUCTION_VS_ICE)
         ) * 0.60  # allow 40 % headroom below research average
         if total < expected_min:
             flags.append(
@@ -236,7 +236,7 @@ def _check_structural_consistency(
             )
 
     # 4. ICE vehicle with lifecycle figure below a credible minimum.
-    if pt == Powertrain.ICE and total < 100.0:
+    if pt == vehicle_type.ICE and total < 100.0:
         flags.append(
             f"ICE vehicle with lifecycle figure of {total:.1f} g/km — below the floor "
             "for credible internal-combustion lifecycle assessments. Confirm LCA scope "
@@ -276,11 +276,11 @@ def _rule_zero_emissions(claim: str, lifecycle: dict, meta: dict) -> Optional[Cl
     if not any(k in claim.lower() for k in keywords):
         return None
 
-    pt = _powertrain_enum(meta["powertrain"])
+    pt = _vehicle_type_enum(meta["vehicle_type"])
     total = lifecycle["total_g_per_km"]
     operational = lifecycle["operational_g_per_km"]
 
-    if pt != Powertrain.EV:
+    if pt != vehicle_type.EV:
         return ClaimFinding(
             claim=claim,
             risk_level=RiskLevel.VIOLATION,
@@ -405,9 +405,9 @@ def _rule_eco_friendly_green(claim: str, lifecycle: dict, meta: dict) -> Optiona
 
     grade = _lifecycle_intensity_grade(lifecycle["total_g_per_km"])
     total = lifecycle["total_g_per_km"]
-    pt = _powertrain_enum(meta["powertrain"])
+    pt = _vehicle_type_enum(meta["vehicle_type"])
 
-    if pt == Powertrain.ICE or grade == "HIGH":
+    if pt == vehicle_type.ICE or grade == "HIGH":
         return ClaimFinding(
             claim=claim,
             risk_level=RiskLevel.VIOLATION,
@@ -471,9 +471,9 @@ def _rule_self_charging(claim: str, lifecycle: dict, meta: dict) -> Optional[Cla
     if not any(k in claim.lower() for k in keywords):
         return None
 
-    pt = _powertrain_enum(meta["powertrain"])
+    pt = _vehicle_type_enum(meta["vehicle_type"])
 
-    if pt == Powertrain.HEV:
+    if pt == vehicle_type.HEV:
         return ClaimFinding(
             claim=claim,
             risk_level=RiskLevel.WARNING,
@@ -490,11 +490,11 @@ def _rule_self_charging(claim: str, lifecycle: dict, meta: dict) -> Optional[Cla
             ),
         )
 
-    if pt not in (Powertrain.EV, Powertrain.PHEV, Powertrain.HEV):
+    if pt not in (vehicle_type.EV, vehicle_type.PHEV, vehicle_type.HEV):
         return ClaimFinding(
             claim=claim,
             risk_level=RiskLevel.VIOLATION,
-            reason=f"'Self-charging' is inapplicable to a {pt.value} powertrain.",
+            reason=f"'Self-charging' is inapplicable to a {pt.value} vehicle_type.",
             suggestion="Remove the claim.",
         )
 
@@ -503,7 +503,7 @@ def _rule_self_charging(claim: str, lifecycle: dict, meta: dict) -> Optional[Cla
 
 def _rule_electrified_electric_conflation(claim: str, lifecycle: dict, meta: dict) -> Optional[ClaimFinding]:
     """
-    Using 'electric' or 'electric vehicle' language for non-BEV powertrains.
+    Using 'electric' or 'electric vehicle' language for non-BEV vehicle_types.
     Toyota Ekō report (Jan 2024) documented systematic conflation of 'electrified'
     and 'electric' to divert consumers searching for EVs toward hybrids.
     """
@@ -511,14 +511,14 @@ def _rule_electrified_electric_conflation(claim: str, lifecycle: dict, meta: dic
     if not any(k in claim.lower() for k in keywords):
         return None
 
-    pt = _powertrain_enum(meta["powertrain"])
+    pt = _vehicle_type_enum(meta["vehicle_type"])
 
-    if pt in (Powertrain.HEV, Powertrain.PHEV):
+    if pt in (vehicle_type.HEV, vehicle_type.PHEV):
         return ClaimFinding(
             claim=claim,
             risk_level=RiskLevel.WARNING,
             reason=(
-                f"Using 'electric' or 'EV' language for a {pt.value} powertrain risks "
+                f"Using 'electric' or 'EV' language for a {pt.value} vehicle_type risks "
                 "conflating it with a battery electric vehicle. The Ekō/Toyota report "
                 "(Jan 2024) documented this practice as deliberate greenwashing that "
                 "misled both consumers and search engines. HEV lifecycle emissions are "
@@ -526,7 +526,7 @@ def _rule_electrified_electric_conflation(claim: str, lifecycle: dict, meta: dic
                 "vs ~75 g/km for a BEV in Europe."
             ),
             suggestion=(
-                f"Use precise powertrain terminology: '{pt.value} — a hybrid that "
+                f"Use precise vehicle_type terminology: '{pt.value} — a hybrid that "
                 "combines a petrol engine with an electric motor.'"
             ),
         )
@@ -547,23 +547,23 @@ def _rule_lower_emissions_comparative(claim: str, lifecycle: dict, meta: dict) -
 
     total = lifecycle["total_g_per_km"]
     grade = _lifecycle_intensity_grade(total)
-    pt = _powertrain_enum(meta["powertrain"])
+    pt = _vehicle_type_enum(meta["vehicle_type"])
 
-    # Estimate plausible reduction vs ICE reference for each powertrain.
-    if pt == Powertrain.EV:
+    # Estimate plausible reduction vs ICE reference for each vehicle_type.
+    if pt == vehicle_type.EV:
         actual_reduction = (ICE_REFERENCE_LIFECYCLE_G_PER_KM - total) / ICE_REFERENCE_LIFECYCLE_G_PER_KM
         reference_label = "average petrol car (EU)"
-    elif pt == Powertrain.PHEV:
+    elif pt == vehicle_type.PHEV:
         actual_reduction = PHEV_LIFECYCLE_REDUCTION_VS_ICE
         reference_label = "equivalent petrol car"
-    elif pt == Powertrain.HEV:
+    elif pt == vehicle_type.HEV:
         actual_reduction = HEV_LIFECYCLE_REDUCTION_VS_ICE
         reference_label = "equivalent petrol car"
     else:
         actual_reduction = 0.0
         reference_label = "average new car"
 
-    if pt == Powertrain.ICE and grade == "HIGH":
+    if pt == vehicle_type.ICE and grade == "HIGH":
         return ClaimFinding(
             claim=claim,
             risk_level=RiskLevel.WARNING,
@@ -630,8 +630,8 @@ def evaluate_claims(
         Output of calculate_lifecycle(vehicle, country, grid_year).
         Required keys: total_g_per_km, operational_g_per_km, manufacturing_g_per_km.
     vehicle_meta : dict
-        Row from the vehicle_clean database table.
-        Required keys: brand, model, powertrain (EV|HEV|PHEV|ICE), electric (bool).
+        Row from the vehicle database table.
+        Required keys: brand, model, vehicle_type (EV|HEV|PHEV|ICE), electric (bool).
     proposed_claims : list[str], optional
         Marketing copy phrases to evaluate.  If None, only structural flags are
         generated.
@@ -648,7 +648,7 @@ def evaluate_claims(
         if k not in lifecycle:
             raise KeyError(f"lifecycle dict is missing required key: '{k}'")
 
-    required_meta_keys = ("brand", "model", "powertrain", "electric")
+    required_meta_keys = ("brand", "model", "vehicle_type", "electric")
     for k in required_meta_keys:
         if k not in vehicle_meta:
             raise KeyError(f"vehicle_meta dict is missing required key: '{k}'")
@@ -697,7 +697,7 @@ def evaluate_claims(
     return GreenwashingReport(
         brand=vehicle_meta["brand"],
         model=vehicle_meta["model"],
-        powertrain=vehicle_meta["powertrain"],
+        vehicle_type=vehicle_meta["vehicle_type"],
         total_g_per_km=lifecycle["total_g_per_km"],
         operational_g_per_km=lifecycle["operational_g_per_km"],
         manufacturing_g_per_km=lifecycle["manufacturing_g_per_km"],
@@ -733,25 +733,25 @@ if __name__ == "__main__":
         # BEV on a coal-heavy grid, claiming "zero emissions"
         (
             {"total_g_per_km": 130.0, "operational_g_per_km": 55.0, "manufacturing_g_per_km": 75.0},
-            {"brand": "AnyEV", "model": "City 300", "powertrain": "EV", "electric": True},
+            {"brand": "AnyEV", "model": "City 300", "vehicle_type": "EV", "electric": True},
             ["zero emissions", "eco-friendly", "sustainable"],
         ),
         # HEV marketed as "self-charging electric vehicle"
         (
             {"total_g_per_km": 175.0, "operational_g_per_km": 145.0, "manufacturing_g_per_km": 30.0},
-            {"brand": "HybridCo", "model": "Synergy X", "powertrain": "HEV", "electric": False},
+            {"brand": "HybridCo", "model": "Synergy X", "vehicle_type": "HEV", "electric": False},
             ["self-charging", "electric vehicle", "lower emissions than petrol"],
         ),
         # Well-performing BEV on clean grid
         (
             {"total_g_per_km": 68.0, "operational_g_per_km": 0.0, "manufacturing_g_per_km": 68.0},
-            {"brand": "CleanDrive", "model": "Aurora", "powertrain": "EV", "electric": True},
+            {"brand": "CleanDrive", "model": "Aurora", "vehicle_type": "EV", "electric": True},
             ["zero tailpipe emissions", "up to 70% lower lifecycle CO₂ vs petrol"],
         ),
         # ICE vehicle claiming "carbon neutral"
         (
             {"total_g_per_km": 215.0, "operational_g_per_km": 175.0, "manufacturing_g_per_km": 40.0},
-            {"brand": "PetrolMax", "model": "Turbo 2000", "powertrain": "ICE", "electric": False},
+            {"brand": "PetrolMax", "model": "Turbo 2000", "vehicle_type": "ICE", "electric": False},
             ["carbon neutral", "eco-friendly", "green car"],
         ),
     ]

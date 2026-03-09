@@ -17,7 +17,7 @@ function Recommend() {
   const [formData, setFormData] = useState({
     country: 'US',
     annualKm: 15000,
-    powertrain: ''
+    vehicle_typepe: ''
   });
 
   // Data state
@@ -133,7 +133,7 @@ function Recommend() {
   const generateReasons = (vehicle) => {
     const reasons = [];
 
-    if (vehicle.powertrain === 'EV') {
+    if (vehicle.vehicle_typepe === 'EV') {
       reasons.push('Zero tailpipe emissions');
     }
 
@@ -149,11 +149,11 @@ function Recommend() {
       reasons.push('Low manufacturing footprint');
     }
 
-    if (vehicle.powertrain === 'HEV') {
+    if (vehicle.vehicle_typepe === 'HEV') {
       reasons.push('Hybrid fuel efficiency');
     }
 
-    if (vehicle.powertrain === 'PHEV') {
+    if (vehicle.vehicle_typepe === 'PHEV') {
       reasons.push('Electric + hybrid flexibility');
     }
 
@@ -194,7 +194,7 @@ function Recommend() {
     try {
       const dailyKm = formData.annualKm / 365;
       const years = 10;
-      const filters = formData.powertrain ? { powertrain: formData.powertrain } : {};
+      const filters = formData.vehicle_typepe ? vehicle_typetype: formDvehicle_typee_type } : {};
 
       const response = await apiClient.getRecommendations(
         dailyKm,
@@ -230,10 +230,10 @@ function Recommend() {
   };
 
   /**
-   * Get powertrain badge variant
+   * Get vehicle_typepe badge variant
    */
-  const getPowertrainVariant = (powertrain) => {
-    const lower = (powertrain || '').toLowerCase();
+  const getvehicle_typepeVariant =vehicle_typetype) => {
+    const lower = (vehicle_typepe || '').toLowerCase();
     if (lower === 'ev' || lower === 'bev') return 'success';
     if (lower === 'phev' || lower === 'hev') return 'info';
     return 'warning';
@@ -271,9 +271,9 @@ function Recommend() {
             />
 
             <Select
-              label="Preferred Powertrain"
-              value={formData.powertrain}
-              onChange={(value) => handleInputChange('powertrain', value)}
+              label="Preferred vehicle_typepe"
+              value={formData.vehicle_typepe}
+              onChange={(value) => handleInputChange('vehicle_typepe', value)}
               options={[
                 { value: '', label: 'Any' },
                 { value: 'EV', label: 'Electric (EV)' },
@@ -333,8 +333,8 @@ function Recommend() {
                     </div>
 
                     <p>
-                      <Badge variant={getPowertrainVariant(rec.vehicle.powertrain)}>
-                        {rec.vehicle.powertrain}
+                      <Badge variant={getvehicle_typepeVariant(rec.vehiclvehicle_typetype)}>
+                        {rec.vehicle.vehicle_typepe}
                       </Badge>
                     </p>
 

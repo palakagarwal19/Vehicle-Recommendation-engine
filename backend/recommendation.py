@@ -16,17 +16,17 @@ def carbon_score(total_g_per_km):
 # FETCH VEHICLES FROM DATABASE
 # ==============================
 
-def fetch_vehicles(body_type=None, powertrain=None):
+def fetch_vehicles(body_type=None, vehicle_type=None):
 
     conn = get_db_connection()
     cur = conn.cursor()
 
-    query = "SELECT * FROM vehicle_clean WHERE 1=1"
+    query = "SELECT * FROM vehicles WHERE 1=1"
     params = []
 
-    if powertrain:
-        query += " AND powertrain = %s"
-        params.append(powertrain)
+    if vehicle_type:
+        query += " AND vehicle_type = %s"
+        params.append(vehicle_type)
 
     if body_type:
         query += " AND body_type = %s"
@@ -51,7 +51,7 @@ def recommend_vehicle(
     daily_km,
     years,
     body_type=None,
-    powertrain=None,
+    vehicle_type=None,
     top_n=3,
     country="US",
     grid_year=2023,
@@ -59,9 +59,9 @@ def recommend_vehicle(
 ):
 
     print("\nRecommendation request")
-    print(f"daily_km={daily_km}, years={years}, powertrain={powertrain}, country={country}")
+    print(f"daily_km={daily_km}, years={years}, vehicle_type={vehicle_type}, country={country}")
 
-    vehicles = fetch_vehicles(body_type, powertrain)
+    vehicles = fetch_vehicles(body_type, vehicle_type)
 
     print(f"Fetched {len(vehicles)} vehicles from DB")
 
@@ -103,7 +103,7 @@ def recommend_vehicle(
                 "brand": v["brand"],
                 "model": v["model"],
                 "year": v["year"],
-                "powertrain": v["powertrain"],
+                "vehicle_type": v["vehicle_type"],
 
                 "operational_g_per_km": lifecycle["operational_g_per_km"],
                 "manufacturing_g_per_km": lifecycle["manufacturing_g_per_km"],
@@ -134,19 +134,19 @@ def recommend_vehicle(
     )
 
     # ==============================
-    # POWERTRAIN DIVERSITY
+    # vehicle_type DIVERSITY
     # ==============================
 
     diverse = []
-    powertrains_seen = set()
+    vehicle_types_seen = set()
 
     for r in results:
 
-        pt = r["powertrain"]
+        pt = r["vehicle_type"]
 
-        if pt not in powertrains_seen:
+        if pt not in vehicle_types_seen:
             diverse.append(r)
-            powertrains_seen.add(pt)
+            vehicle_types_seen.add(pt)
 
         if len(diverse) >= top_n:
             break
@@ -168,7 +168,7 @@ def recommend_vehicle(
     for i, r in enumerate(final):
         print(
             f"{i+1}. {r['vehicle']} | "
-            f"{r['powertrain']} | "
+            f"{r['vehicle_type']} | "
             f"{r['total_g_per_km']:.1f} g/km | "
             f"{r['carbon_score']} score"
         )

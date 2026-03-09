@@ -2,7 +2,7 @@
 Web search module for finding manufacturer marketing claims
 """
 
-def search_marketing_claims(brand, model, year, actual_total, actual_operational, actual_manufacturing, powertrain):
+def search_marketing_claims(brand, model, year, actual_total, actual_operational, actual_manufacturing, vehicle_type):
     """
     Search the web for manufacturer marketing claims about a vehicle
     and compare them with actual calculated emissions
@@ -31,8 +31,8 @@ def search_marketing_claims(brand, model, year, actual_total, actual_operational
     # Note: This is a placeholder for actual web search implementation
     # In production, you would use a web search API here
     
-    # For now, return common marketing claims based on powertrain type
-    if powertrain == "EV":
+    # For now, return common marketing claims based on vehicle_type type
+    if vehicle_type == "EV":
         claims_found.append({
             "source": "Common EV Marketing",
             "claim": "Zero tailpipe emissions",
@@ -55,7 +55,7 @@ def search_marketing_claims(brand, model, year, actual_total, actual_operational
             }
         })
     
-    elif powertrain in ["HEV", "PHEV"]:
+    elif vehicle_type in ["HEV", "PHEV"]:
         claims_found.append({
             "source": "Common Hybrid Marketing",
             "claim": "Significantly lower emissions than conventional vehicles",
@@ -67,7 +67,7 @@ def search_marketing_claims(brand, model, year, actual_total, actual_operational
             }
         })
     
-    elif powertrain == "ICE":
+    elif vehicle_type == "ICE":
         claims_found.append({
             "source": "Common ICE Marketing",
             "claim": "Efficient engine technology",

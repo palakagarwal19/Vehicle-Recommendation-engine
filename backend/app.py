@@ -6,7 +6,7 @@ from database import get_db_connection
 from engine import calculate_lifecycle
 from recommendation import recommend_vehicle
 from break_even import break_even_km
-from greenwashing import detect_greenwashing
+from greenwashing import evaluate_claims
 from carbon_index import carbon_score
 from annual_impact import annual_emissions
 from grid_sensitivity import grid_sensitivity
@@ -30,42 +30,34 @@ def home():
 # ==================================================
 # VEHICLE LIST
 # ==================================================
-
 @app.route("/vehicles")
-def vehicles_list():
-
-    limit = request.args.get("limit", 50, type=int)
-    brand = request.args.get("brand")
-    powertrain = request.args.get("powertrain")
+def get_vehicles():
 
     conn = get_db_connection()
     cur = conn.cursor()
 
-    query = "SELECT * FROM vehicle_clean WHERE 1=1"
-    params = []
+    cur.execute("""
+        SELECT brand, model, year, vehicle_type
+        FROM vehicles
+        ORDER BY brand, model
+    """)
 
-    if brand:
-        query += " AND brand = %s"
-        params.append(brand)
+    rows = cur.fetchall()
 
-    if powertrain:
-        query += " AND powertrain = %s"
-        params.append(powertrain)
-
-    query += " LIMIT %s"
-    params.append(limit)
-
-    cur.execute(query, params)
-
-    columns = [desc[0] for desc in cur.description]
-    vehicles = [dict(zip(columns, row)) for row in cur.fetchall()]
+    vehicles = [
+        {
+            "brand": r[0],
+            "model": r[1],
+            "year": r[2],
+            "vehicle_type": r[3]
+        }
+        for r in rows
+    ]
 
     cur.close()
     conn.close()
 
     return jsonify(vehicles)
-
-
 # ==================================================
 # VEHICLE DETAIL
 # ==================================================
@@ -85,7 +77,7 @@ def vehicle_detail():
 
     cur.execute("""
         SELECT *
-        FROM vehicle_clean
+        FROM vehicles
         WHERE brand=%s AND model=%s AND year=%s
         LIMIT 1
     """, (brand, model, year))
@@ -126,7 +118,7 @@ def lifecycle():
 
     cur.execute("""
         SELECT *
-        FROM vehicle_clean
+        FROM vehicles
         WHERE brand=%s AND model=%s AND year=%s
         LIMIT 1
     """, (brand, model, year))
@@ -150,12 +142,10 @@ def lifecycle():
 # ==================================================
 # MULTI VEHICLE COMPARISON
 # ==================================================
-
 @app.route("/compare-multiple", methods=["POST"])
 def compare_multiple():
 
     data = request.json
-
     country = data.get("country")
     year = data.get("year")
     vehicles_input = data.get("vehicles")
@@ -164,36 +154,46 @@ def compare_multiple():
         return jsonify({"error": "vehicles required"}), 400
 
     results = []
-
     conn = get_db_connection()
     cur = conn.cursor()
 
     for v in vehicles_input:
-
         cur.execute("""
-            SELECT *
-            FROM vehicle_clean
+            SELECT * FROM vehicles
             WHERE brand=%s AND model=%s AND year=%s
             LIMIT 1
         """, (v["brand"], v["model"], v["year"]))
 
         row = cur.fetchone()
 
-        if row:
+        if not row:
+            results.append({
+                "brand": v["brand"],
+                "model": v["model"],
+                "year": v["year"],
+                "error": "Vehicle not found in database"
+            })
+            continue
 
-            columns = [desc[0] for desc in cur.description]
-            vehicle = dict(zip(columns, row))
+        columns = [desc[0] for desc in cur.description]
+        vehicle = dict(zip(columns, row))
 
-            lifecycle = calculate_lifecycle(vehicle, country, year)
+        print(f"[compare] {v['brand']} {v['model']} fields: fuel_type={vehicle.get('fuel_type')}, co2_wltp_gpkm={vehicle.get('co2_wltp_gpkm')}, fuel_l_per_100km={vehicle.get('fuel_l_per_100km')}")
 
-            if "error" not in lifecycle:
-                results.append(lifecycle)
+        lifecycle = calculate_lifecycle(vehicle, country, year)
+
+        # Always append — include error field if calculation failed
+        results.append({
+            "brand": vehicle["brand"],
+            "model": vehicle["model"],
+            "year": vehicle["year"],
+            **lifecycle
+        })
 
     cur.close()
     conn.close()
 
     return jsonify(results)
-
 
 # ==================================================
 # RECOMMENDATION ENGINE
@@ -208,7 +208,7 @@ def recommend():
         daily_km=data.get("daily_km"),
         years=data.get("years"),
         body_type=data.get("filters", {}).get("bodyType"),
-        powertrain=data.get("filters", {}).get("powertrain"),
+        vehicle_type=data.get("filters", {}).get("vehicle_type"),
         country=data.get("country", "US"),
         grid_year=data.get("grid_year", 2023)
     )
@@ -235,7 +235,7 @@ def break_even():
 
     cur.execute("""
         SELECT *
-        FROM vehicle_clean
+        FROM vehicles
         WHERE brand=%s AND model=%s AND year=%s
         LIMIT 1
     """, (ev["brand"], ev["model"], ev["year"]))
@@ -244,7 +244,7 @@ def break_even():
 
     cur.execute("""
         SELECT *
-        FROM vehicle_clean
+        FROM vehicles
         WHERE brand=%s AND model=%s AND year=%s
         LIMIT 1
     """, (ice["brand"], ice["model"], ice["year"]))
@@ -270,7 +270,6 @@ def break_even():
 # ==================================================
 # GREENWASHING DETECTION
 # ==================================================
-
 @app.route("/greenwashing", methods=["POST"])
 def greenwashing():
 
@@ -278,14 +277,32 @@ def greenwashing():
 
     lifecycle = data.get("lifecycle")
     vehicle_meta = data.get("vehicle")
+    claims = data.get("claims", [])
 
     if not lifecycle:
         return jsonify({"error": "Missing lifecycle data"}), 400
 
-    result = detect_greenwashing(lifecycle, vehicle_meta)
+    result = evaluate_claims(lifecycle, vehicle_meta, claims)
 
-    return jsonify(result)
-
+    return jsonify({
+        "brand": result.brand,
+        "model": result.model,
+        "vehicle_type": result.vehicle_type,
+        "total_g_per_km": result.total_g_per_km,
+        "operational_g_per_km": result.operational_g_per_km,
+        "manufacturing_g_per_km": result.manufacturing_g_per_km,
+        "overall_risk": result.overall_risk.value,
+        "structural_flags": result.structural_flags,
+        "findings": [
+            {
+                "claim": f.claim,
+                "risk_level": f.risk_level.value,
+                "reason": f.reason,
+                "suggestion": f.suggestion
+            }
+            for f in result.findings
+        ]
+    })
 
 # ==================================================
 # CARBON SCORE
@@ -326,42 +343,36 @@ def annual_impact_route():
 # ==================================================
 # GRID SENSITIVITY
 # ==================================================
-
-@app.route("/grid-sensitivity", methods=["POST"])
-def grid_sensitivity_route():
-
-    data = request.json
+@app.route("/grid")
+def get_grid_data():
 
     conn = get_db_connection()
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT *
-        FROM vehicle_clean
-        WHERE brand=%s AND model=%s AND year=%s
-        LIMIT 1
-    """, (data["brand"], data["model"], data["vehicle_year"]))
+        SELECT country_code, year, raw_intensity, carbon_intensity_gco2_per_kwh
+        FROM grid_intensity
+        ORDER BY country_code, year
+    """)
 
-    row = cur.fetchone()
-
-    if not row:
-        return jsonify({"error": "Vehicle not found"}), 404
-
-    columns = [desc[0] for desc in cur.description]
-    vehicle = dict(zip(columns, row))
+    rows = cur.fetchall()
 
     cur.close()
     conn.close()
 
-    result = grid_sensitivity(
-        vehicle,
-        data.get("countries"),
-        data.get("year")
-    )
+    grid = {}
 
-    return jsonify(result)
+    for country, year, raw, corrected in rows:
 
+        if country not in grid:
+            grid[country] = {}
 
+        grid[country][str(year)] = {
+            "raw": raw,
+            "corrected": corrected
+        }
+
+    return jsonify(grid)
 # ==================================================
 # COUNTRIES (FROM GRID DATA)
 # ==================================================
@@ -385,7 +396,43 @@ def countries():
 
     return jsonify(countries)
 
+@app.route("/vehicle-search")
+def vehicle_search():
 
+    q = request.args.get("q", "")
+
+    if len(q) < 2:
+        return jsonify([])
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT brand, model, year, vehicle_type
+        FROM vehicles
+        WHERE
+            LOWER(brand) LIKE %s
+            OR LOWER(model) LIKE %s
+        ORDER BY brand, model
+        LIMIT 30
+    """, (f"%{q.lower()}%", f"%{q.lower()}%"))
+
+    rows = cur.fetchall()
+
+    vehicles = [
+        {
+            "brand": r[0],
+            "model": r[1],
+            "year": r[2],
+            "vehicle_type": r[3]
+        }
+        for r in rows
+    ]
+
+    cur.close()
+    conn.close()
+
+    return jsonify(vehicles)
 # ==================================================
 # GRID DATA
 # ==================================================

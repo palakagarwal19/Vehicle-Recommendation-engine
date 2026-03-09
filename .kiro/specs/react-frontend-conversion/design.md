@@ -232,7 +232,7 @@ Updated UI
     brand: string,
     model: string,
     year: number,
-    powertrain: string,
+    vehicle_type: string,
     country: string
   },
   availableVehicles: Array<Vehicle>,
@@ -321,7 +321,7 @@ Updated UI
   formData: {
     country: string,
     annualKm: number,
-    powertrain: string
+    vehicle_type: string
   },
   countries: Array<string>,
   recommendations: Array<Vehicle>,
@@ -615,7 +615,7 @@ Updated UI
     brand: string,
     model: string,
     year: number,
-    powertrain: string,
+    vehicle_type: string,
     emissions: number
   },
   onClick: Function,
@@ -820,7 +820,7 @@ Updated UI
   brand: string,              // e.g., "Tesla"
   model: string,              // e.g., "Model 3"
   year: number,               // e.g., 2023
-  powertrain: string,         // "BEV", "PHEV", "HEV", "ICE-Petrol", "ICE-Diesel"
+  vehicle_type: string,         // "BEV", "PHEV", "HEV", "ICE-Petrol", "ICE-Diesel"
   range_km: number,           // Electric range in km
   battery_kwh: number,        // Battery capacity
   fuel_consumption: number,   // L/100km or kWh/100km
@@ -836,7 +836,7 @@ Updated UI
     brand: string,
     model: string,
     year: number,
-    powertrain: string
+    vehicle_type: string
   },
   country: string,
   grid_year: number,
@@ -889,7 +889,7 @@ Updated UI
   criteria: {
     country: string,
     annual_km: number,
-    powertrain: string
+    vehicle_type: string
   },
   recommendations: Array<{
     rank: number,
@@ -1061,7 +1061,7 @@ Updated UI
   brand: string | null,
   model: string | null,
   year: number | null,
-  powertrain: string | null,
+  vehicle_type: string | null,
   country: string | null
 }
 ```
@@ -1215,7 +1215,7 @@ After analyzing all acceptance criteria, several patterns emerged that allow us 
 
 ### Property 19: Vehicle Detail Data Display
 
-*For any* vehicle detail data received from the API, the VehicleDetail component should display the vehicle name, metadata, powertrain badge, lifecycle metrics, carbon score, and charts.
+*For any* vehicle detail data received from the API, the VehicleDetail component should display the vehicle name, metadata, vehicle_type badge, lifecycle metrics, carbon score, and charts.
 
 **Validates: Requirements 9.3, 9.4, 9.5, 9.6, 9.7**
 
@@ -1793,7 +1793,7 @@ export const createMockVehicle = (overrides = {}) => ({
   brand: 'Tesla',
   model: 'Model 3',
   year: 2023,
-  powertrain: 'BEV',
+  vehicle_type: 'BEV',
   ...overrides
 });
 
@@ -1844,13 +1844,13 @@ it('should update vehicle list based on filters', () => {
     fc.property(
       fc.record({
         brand: fc.constantFrom('Tesla', 'BMW', 'Volkswagen'),
-        powertrain: fc.constantFrom('BEV', 'PHEV', 'ICE-Petrol')
+        vehicle_type: fc.constantFrom('BEV', 'PHEV', 'ICE-Petrol')
       }),
       async (filters) => {
         const mockVehicles = [
-          { brand: 'Tesla', model: 'Model 3', powertrain: 'BEV' },
-          { brand: 'BMW', model: 'i4', powertrain: 'BEV' },
-          { brand: 'Volkswagen', model: 'Golf', powertrain: 'ICE-Petrol' }
+          { brand: 'Tesla', model: 'Model 3', vehicle_type: 'BEV' },
+          { brand: 'BMW', model: 'i4', vehicle_type: 'BEV' },
+          { brand: 'Volkswagen', model: 'Golf', vehicle_type: 'ICE-Petrol' }
         ];
         
         vi.spyOn(api, 'getAllVehicles').mockResolvedValue(mockVehicles);
@@ -1861,15 +1861,15 @@ it('should update vehicle list based on filters', () => {
         fireEvent.change(screen.getByLabelText(/brand/i), {
           target: { value: filters.brand }
         });
-        fireEvent.change(screen.getByLabelText(/powertrain/i), {
-          target: { value: filters.powertrain }
+        fireEvent.change(screen.getByLabelText(/vehicle_type/i), {
+          target: { value: filters.vehicle_type }
         });
         
         await waitFor(() => {
           const displayedVehicles = container.querySelectorAll('.vehicle-card');
           displayedVehicles.forEach(card => {
             expect(card.textContent).toContain(filters.brand);
-            expect(card.textContent).toContain(filters.powertrain);
+            expect(card.textContent).toContain(filters.vehicle_type);
           });
         });
       }

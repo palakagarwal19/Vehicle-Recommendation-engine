@@ -27,10 +27,10 @@ scraper = ClaimScraper(
 
 
 # -----------------------------
-# POWERTRAIN INFERENCE
+# vehicle_type INFERENCE
 # -----------------------------
 
-def infer_powertrain(vehicle):
+def infer_vehicle_type(vehicle):
 
     fuel = vehicle.get("fuel_type")
     electricity = vehicle.get("electric_wh_per_km")
@@ -67,7 +67,7 @@ def get_vehicles(limit=50):
             fuel_l_per_100km,
             kerb_weight_kg,
             battery_weight_kg
-        FROM vehicles_clean
+        FROM vehicles
         WHERE brand IS NOT NULL
         AND model IS NOT NULL
         LIMIT %s
@@ -129,16 +129,16 @@ def save_greenwashing_results(vehicle_id, report):
 
 def process_vehicle(vehicle):
 
-    powertrain, electric = infer_powertrain(vehicle)
+    vehicle_type, electric = infer_vehicle_type(vehicle)
 
     vehicle_meta = {
         "brand": vehicle["brand"],
         "model": vehicle["model"],
-        "powertrain": powertrain,
+        "vehicle_type": vehicle_type,
         "electric": electric
     }
 
-    print(f"\nProcessing: {vehicle_meta['brand']} {vehicle_meta['model']} ({powertrain})")
+    print(f"\nProcessing: {vehicle_meta['brand']} {vehicle_meta['model']} ({vehicle_type})")
 
     # Lifecycle emissions (EU grid 2023 default)
     lifecycle = calculate_lifecycle(vehicle, "EU", 2023)

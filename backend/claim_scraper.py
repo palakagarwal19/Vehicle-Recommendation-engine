@@ -9,7 +9,7 @@ deduplicated list of claim strings ready to pass into greenwashing.evaluate_clai
 
 Architecture
 ------------
-    vehicle_meta (brand, model, powertrain)
+    vehicle_meta (brand, model, vehicle_type)
           │
           ▼
     ClaimScraper.fetch(vehicle_meta)
@@ -52,7 +52,7 @@ Usage
     vehicle_meta = {
         "brand": "Tesla",
         "model": "Model 3",
-        "powertrain": "EV",
+        "vehicle_type": "EV",
         "electric": True,
     }
 
@@ -344,13 +344,13 @@ class ClaimScraper:
         Drop claims below this confidence threshold before returning.
     """
 
-    # Query templates — {brand}, {model}, {powertrain} are interpolated.
+    # Query templates — {brand}, {model}, {vehicle_type} are interpolated.
     QUERY_TEMPLATES = [
         "{brand} {model} emissions environmental claims",
         "{brand} {model} marketing eco sustainable green",
         "{brand} {model} zero emission carbon neutral advertisement",
         'site:{brand_domain} "{model}" sustainable OR "zero emission" OR "eco"',
-        "{brand} {model} {powertrain} environmental advertising 2024",
+        "{brand} {model} {vehicle_type} environmental advertising 2024",
     ]
 
     # Common manufacturer domain patterns for site: queries.
@@ -398,7 +398,7 @@ class ClaimScraper:
         ----------
         vehicle_meta : dict
             Same dict as used in greenwashing.evaluate_claims().
-            Required keys: brand, model, powertrain.
+            Required keys: brand, model, vehicle_type.
 
         Returns
         -------
@@ -406,9 +406,9 @@ class ClaimScraper:
         """
         brand = vehicle_meta["brand"]
         model = vehicle_meta["model"]
-        powertrain = vehicle_meta["powertrain"]
+        vehicle_type = vehicle_meta["vehicle_type"]
 
-        queries = self._build_queries(brand, model, powertrain)
+        queries = self._build_queries(brand, model, vehicle_type)
         raw_results: list[dict] = []
 
         for i, query in enumerate(queries):
@@ -434,14 +434,14 @@ class ClaimScraper:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _build_queries(self, brand: str, model: str, powertrain: str) -> list[str]:
+    def _build_queries(self, brand: str, model: str, vehicle_type: str) -> list[str]:
         brand_domain = self.BRAND_DOMAINS.get(brand.lower(), f"{brand.lower()}.com")
         queries = []
         for template in self.QUERY_TEMPLATES:
             q = template.format(
                 brand=brand,
                 model=model,
-                powertrain=powertrain,
+                vehicle_type=vehicle_type,
                 brand_domain=brand_domain,
             )
             queries.append(q)
@@ -603,7 +603,7 @@ if __name__ == "__main__":
     }
     vehicle_meta = {
         "brand": "Tesla", "model": "Model 3",
-        "powertrain": "EV", "electric": True,
+        "vehicle_type": "EV", "electric": True,
     }
 
     # Live web search:

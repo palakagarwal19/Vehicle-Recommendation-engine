@@ -122,7 +122,7 @@ This document specifies the requirements for converting the existing CarbonWise 
 
 #### Acceptance Criteria
 
-1. THE Compare Page_Component SHALL display filter controls for Brand, Model, Year, Powertrain, and Country
+1. THE Compare Page_Component SHALL display filter controls for Brand, Model, Year, vehicle_type, and Country
 2. THE Compare Page_Component SHALL fetch and display a list of available vehicles based on filter selections
 3. THE Compare Page_Component SHALL allow users to select up to 3 vehicles for comparison
 4. THE Compare Page_Component SHALL display selected vehicles in a grid layout
@@ -140,7 +140,7 @@ This document specifies the requirements for converting the existing CarbonWise 
 
 1. THE Vehicle_Detail Page_Component SHALL extract brand, model, and year from URL parameters
 2. THE Vehicle_Detail Page_Component SHALL fetch vehicle details from the Backend_API
-3. THE Vehicle_Detail Page_Component SHALL display vehicle name, metadata, and powertrain badge
+3. THE Vehicle_Detail Page_Component SHALL display vehicle name, metadata, and vehicle_type badge
 4. THE Vehicle_Detail Page_Component SHALL display lifecycle summary metrics (Total, Manufacturing, Operational)
 5. THE Vehicle_Detail Page_Component SHALL display a carbon score with visual indicator
 6. THE Vehicle_Detail Page_Component SHALL display an emissions breakdown chart
@@ -155,7 +155,7 @@ This document specifies the requirements for converting the existing CarbonWise 
 
 #### Acceptance Criteria
 
-1. THE Recommend Page_Component SHALL display a form with inputs for Country, Annual km Driven, and Preferred Powertrain
+1. THE Recommend Page_Component SHALL display a form with inputs for Country, Annual km Driven, and Preferred vehicle_type
 2. THE Recommend Page_Component SHALL fetch available countries from the Backend_API
 3. WHEN the form is submitted, THE Recommend Page_Component SHALL send criteria to the Backend_API
 4. WHEN recommendations are received, THE Recommend Page_Component SHALL display the top 3 recommended vehicles

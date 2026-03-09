@@ -27,9 +27,9 @@ function VehicleCard({ vehicle, onClick, selected = false, showDetails = false }
       
       <div className="vehicle-card-body">
         <div className="vehicle-card-info">
-          <span className="vehicle-card-label">Powertrain:</span>
-          <Badge variant={vehicle.powertrain === 'BEV' ? 'success' : 'info'} size="small">
-            {vehicle.powertrain}
+          <span className="vehicle-card-label">vehicle_typepe:</span>
+          <Badge variant={vehicle.vehicle_typepe === 'BEV' ? 'success' : 'info'} size="small">
+            {vehicle.vehicle_typepe}
           </Badge>
         </div>
         

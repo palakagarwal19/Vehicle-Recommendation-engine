@@ -101,10 +101,10 @@ function VehicleDetail() {
     setAnnualImpact(null); // Reset impact when input changes
   };
 
-  // Get badge variant based on powertrain
-  const getBadgeVariant = (powertrain) => {
-    if (!powertrain) return 'info';
-    const type = powertrain.toLowerCase();
+  // Get badge variant based on vehicle_typepepepepe
+  const getBadgeVariant = (vehicle_typepepepepe) => {
+    if (!vehicle_typepepepepe) return 'info';
+    const type = vehicle_typepepepepe.toLowerCase();
     if (type.includes('bev')) return 'success';
     if (type.includes('phev') || type.includes('hev')) return 'warning';
     return 'danger';

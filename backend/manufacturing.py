@@ -1,20 +1,25 @@
-import json
+import psycopg2
 import os
+import dotenv
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "..", "data", "manufacturing")
+dotenv.load_dotenv()
 
-LIFETIME_KM = 278_600
+DB_URL = os.getenv("DB_URI")
 
-PT_MAP = {
-    "ICE": "ICEV",
-    "EV": "EV",
-    "HEV": "HEV",
-    "PHEV": "PHEV",
-    "FCV": "FCV"
-}
-GREET_CHEMISTRY = {
-    "ICEV": "LeadAcid",
+LIFETIME_KM = 278600
+LB_TO_KG = 0.453592
+
+
+def get_connection():
+    return psycopg2.connect(DB_URL)
+
+
+# =====================================
+# GREET BATTERY CHEMISTRY MAP
+# =====================================
+
+CHEMISTRY_MAP = {
+    "ICE": "LeadAcid",
     "HEV": "NiMH",
     "PHEV": "LiIon",
     "EV": "LiIon",
@@ -22,60 +27,133 @@ GREET_CHEMISTRY = {
 }
 
 
-def load_json(name):
-    with open(os.path.join(DATA_DIR, name), "r") as f:
-        return json.load(f)
+# =====================================
+# BATTERY EMISSIONS
+# =====================================
 
+def battery_emissions(vehicle_type, conn):
 
-glider = load_json("glider.json")
-battery = load_json("battery_weights.json")
-fluids = load_json("fluids_weights.json")
-ef = load_json("emission_factors.json")
+    chemistry = CHEMISTRY_MAP.get(vehicle_type)
 
-LB_TO_KG = 0.453592
-
-
-# ----------------------------
-# Battery emissions
-# ----------------------------
-def battery_emissions(pt):
-    if pt not in battery:
+    if not chemistry:
         return 0
 
-    chem = GREET_CHEMISTRY.get(pt)
-    if chem is None:
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT weight_lb
+        FROM battery_weights
+        WHERE vehicle_type = %s
+        AND chemistry = %s
+        AND structure = 'conventional'
+    """, (vehicle_type, chemistry))
+
+    weight_row = cur.fetchone()
+
+    if not weight_row:
+        cur.close()
         return 0
 
-    lb = battery[pt]["conventional"].get(chem, 0)
+    weight_lb = weight_row[0]
+    weight_kg = weight_lb * LB_TO_KG
 
-    kg = lb * LB_TO_KG
-    return kg * ef["battery"][chem]
+    cur.execute("""
+        SELECT kg_co2_per_kg
+        FROM battery_emission_factors
+        WHERE chemistry = %s
+    """, (chemistry,))
 
-# ----------------------------
-# Fluid emissions
-# ----------------------------
-def fluid_emissions(pt):
-    return fluids[pt] / 1000
-# ----------------------------
-# Manufacturing per vehicle
-# ----------------------------
+    factor_row = cur.fetchone()
+
+    cur.close()
+
+    if not factor_row:
+        return 0
+
+    factor = factor_row[0]
+
+    return weight_kg * factor
+
+
+# =====================================
+# FLUID EMISSIONS
+# =====================================
+
+def fluid_emissions(vehicle_type, conn):
+
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT grams_co2
+        FROM fluids_weights
+        WHERE vehicle_type = %s
+    """, (vehicle_type,))
+
+    row = cur.fetchone()
+
+    cur.close()
+
+    if not row:
+        return 0
+
+    return row[0] / 1000  # convert g → kg
+
+
+# =====================================
+# GLIDER EMISSIONS
+# =====================================
+
+def glider_emissions(vehicle_type, conn):
+
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT kg_co2
+        FROM glider_emissions
+        WHERE vehicle_type = %s
+        AND structure = 'conventional'
+    """, (vehicle_type,))
+
+    row = cur.fetchone()
+
+    cur.close()
+
+    if not row:
+        raise ValueError(f"No glider emissions for {vehicle_type}")
+
+    return row[0]
+
+
+# =====================================
+# TOTAL MANUFACTURING
+# =====================================
+
 def manufacturing_kg(vehicle):
 
-    raw_pt = vehicle.get("type")
-    pt = PT_MAP.get(raw_pt)
+    vehicle_type = vehicle.get("vehicle_type")
 
-    if pt is None or pt not in glider:
-        raise ValueError(f"Manufacturing data not found for powertrain: {raw_pt}")
+    if not vehicle_type:
+        raise ValueError("vehicle_type missing")
 
-    glider_kg = glider[pt]["conventional"]
+    conn = get_connection()
 
-    batt_kg = battery_emissions(pt)
-    fluid_kg = fluid_emissions(pt)
-    print("Glider kg:", glider_kg)
-    print("Battery kg:", batt_kg)
-    print("Fluids kg:", fluid_kg)
-    print("Total kg:", glider_kg + batt_kg + fluid_kg)
-    return glider_kg + batt_kg + fluid_kg
+    glider = glider_emissions(vehicle_type, conn)
+    battery = battery_emissions(vehicle_type, conn)
+    fluids = fluid_emissions(vehicle_type, conn)
+
+    conn.close()
+
+    total = glider + battery + fluids
+
+    return total
+
+
+# =====================================
+# MANUFACTURING PER KM
+# =====================================
 
 def manufacturing_per_km(vehicle):
-    return manufacturing_kg(vehicle) / LIFETIME_KM
+
+    total = manufacturing_kg(vehicle)
+
+    return total / LIFETIME_KM
