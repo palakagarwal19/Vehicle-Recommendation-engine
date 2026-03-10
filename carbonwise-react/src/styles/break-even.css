@@ -1,9 +1,5 @@
 /* ============================================================
-   BREAK-EVEN — layout classes not covered by compare.css
-   Shared classes (card, filters, filter-select, badge,
-   chart-container, charts-section, comparison-card,
-   emission-value, skeleton-*, search-bar-*, vehicles-loading-*)
-   come from compare.css and global styles.
+   BREAK-EVEN  —  classes not in compare.css / global styles
    ============================================================ */
 
 /* ── Two-column selector grid ──────────────────────────────── */
@@ -18,10 +14,7 @@
   .be-selectors { grid-template-columns: 1fr; }
 }
 
-.be-selector-col {
-  display: flex;
-  flex-direction: column;
-}
+.be-selector-col { display: flex; flex-direction: column; }
 
 .be-selector-title {
   display: flex;
@@ -40,43 +33,59 @@
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--color-text-secondary, #888);
-  padding-top: 3.5rem;   /* align with first filter row after pills */
+  padding-top: 3.8rem;
   letter-spacing: 0.1em;
+  user-select: none;
 }
 
 @media (max-width: 768px) {
   .be-vs-divider { padding-top: 0; padding-bottom: 0.5rem; }
 }
 
-/* ── Powertrain type pill row ──────────────────────────────── */
+/* ── Powertrain type pills ──────────────────────────────────── */
 .be-type-pills {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
+  margin-bottom: 0.75rem;
 }
 
+/* Base pill — reset button defaults, add pill shape */
 .be-type-pill {
   cursor: pointer;
-  border: none;
-  padding: 0.25rem 0.65rem;
+  border: 2px solid transparent;
+  padding: 0.28rem 0.75rem;
   border-radius: 999px;
   font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  opacity: 0.55;
-  transition: opacity 0.15s, transform 0.1s;
-  background: transparent;
-  /* inherit colour from badge-* classes */
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.45;
+  transition: opacity 0.15s, transform 0.1s, border-color 0.15s;
+  /* NO background override — let colour classes below set it */
 }
 
 .be-type-pill:hover {
-  opacity: 0.85;
+  opacity: 0.8;
   transform: translateY(-1px);
 }
 
+/* Active state: full opacity + border ring matching pill colour */
 .be-type-pill--active {
   opacity: 1 !important;
-  box-shadow: 0 0 0 2px currentColor;
+  border-color: currentColor;
+  transform: none;
+}
+
+/* ── Pill colour definitions (self-contained, no compare.css dependency) ── */
+.be-type-pill--bev  { background: #00C853; color: #003d1a; }
+.be-type-pill--hev  { background: #00BCD4; color: #003d45; }
+.be-type-pill--phev { background: #7C4DFF; color: #fff;    }
+.be-type-pill--ice  { background: #FF5252; color: #fff;    }
+.be-type-pill--all  {
+  background: rgba(255,255,255,0.08);
+  color: var(--color-text-secondary, #aaa);
+  border: 1px solid rgba(255,255,255,0.15);
 }
 
 /* ── Selected vehicle preview ──────────────────────────────── */
@@ -100,9 +109,7 @@
 }
 
 /* ── Hero break-even number ─────────────────────────────────── */
-.break-even-display {
-  padding: 1.5rem 0 0.5rem;
-}
+.break-even-display { padding: 1.5rem 0 0.5rem; }
 
 .break-even-value {
   display: flex;

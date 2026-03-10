@@ -218,7 +218,6 @@ export default function Compare() {
     }
   };
 
-  // ── SKELETONS ──────────────────────────────────────────────────────────────
   function SkeletonVehicleItem() {
     return (
       <div className="vehicle-item skeleton-vehicle-item">
@@ -261,22 +260,70 @@ export default function Compare() {
     );
   }
 
+  // ── ELV Material Flow box — shown for ALL vehicle types ───────────────────
+  function ElvBox({ mat, vehicleType }) {
+    const isEVType     = ["BEV", "EV", "PHEV"].includes(vehicleType);
+    const hasRealData  = mat && mat.metal_recovered_kg != null;
+
+    return (
+      <div className="elv-box">
+        <div className="elv-box-title">
+          ♻️ End-of-Life Vehicle Recovery
+          {mat?.weight_is_estimate && (
+            <span className="elv-estimate-badge"> est.</span>
+          )}
+        </div>
+
+        {!isEVType && (
+          <div className="elv-battery-row">
+            <span className="elv-label">Battery recycling</span>
+            <span className="elv-dash" title="GREET: metal recycling credits offset all dismantling emissions">
+              — <span className="elv-offset-note">(offset by metal credits)</span>
+            </span>
+          </div>
+        )}
+
+        {hasRealData ? (
+          <div className="elv-grid">
+            {mat.vehicle_weight_kg != null && (
+              <div className="elv-row">
+                <span className="elv-label">
+                  Vehicle mass{mat.weight_is_estimate ? " (avg estimate)" : ""}
+                </span>
+                <span className="elv-neutral">
+                  {mat.vehicle_weight_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg
+                </span>
+              </div>
+            )}
+            <div className="elv-row">
+              <span className="elv-label">↩ Metals recovered</span>
+              <span className="elv-positive">
+                {mat.metal_recovered_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg
+              </span>
+            </div>
+            <div className="elv-row">
+              <span className="elv-label">🗑 Shredder residue (ASR)</span>
+              <span className="elv-negative">
+                {mat.asr_waste_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="elv-unavailable">Vehicle weight unavailable</div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="container">
 
       <style>{`
-        .recycling-row { margin-top: 2px; }
-        .recycling-note {
-          font-size: 0.72rem;
-          opacity: 0.4;
-          font-style: italic;
-          margin-left: 4px;
-        }
         .elv-box {
           margin-top: 8px;
-          padding: 8px 12px;
-          background: rgba(178,223,219,0.06);
-          border: 1px solid rgba(178,223,219,0.15);
+          padding: 9px 12px;
+          background: rgba(178,223,219,0.05);
+          border: 1px solid rgba(178,223,219,0.14);
           border-radius: 7px;
         }
         .elv-box-title {
@@ -284,20 +331,31 @@ export default function Compare() {
           letter-spacing: 1px;
           text-transform: uppercase;
           color: #B2DFDB;
-          opacity: 0.65;
-          margin-bottom: 6px;
+          opacity: 0.7;
+          margin-bottom: 7px;
           font-weight: 600;
         }
-        .elv-row {
-          display: flex;
-          justify-content: space-between;
-          font-size: 0.78rem;
-          margin-bottom: 3px;
+        .elv-estimate-badge {
+          background: rgba(178,223,219,0.15);
+          color: #B2DFDB;
+          font-size: 0.65rem;
+          padding: 1px 5px;
+          border-radius: 3px;
+          margin-left: 5px;
+          letter-spacing: 0.5px;
+          text-transform: none;
         }
-        .elv-row span:first-child { color: rgba(255,255,255,0.42); }
-        .elv-positive { color: #69F0AE !important; font-weight: 600; }
-        .elv-negative { color: #FF7043 !important; font-weight: 600; }
-        .elv-neutral  { color: rgba(255,255,255,0.65) !important; font-weight: 600; }
+        .elv-grid { display: flex; flex-direction: column; gap: 4px; }
+        .elv-row  { display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; }
+        .elv-battery-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; margin-bottom: 5px; }
+        .elv-label   { color: rgba(255,255,255,0.4); }
+        .elv-dash    { color: rgba(255,255,255,0.25); font-size: 0.82rem; }
+        .elv-offset-note { font-size: 0.7rem; opacity: 0.6; font-style: italic; }
+        .elv-positive { color: #69F0AE !important; font-weight: 600; font-size: 0.82rem; }
+        .elv-negative { color: #FF7043 !important; font-weight: 600; font-size: 0.82rem; }
+        .elv-neutral  { color: rgba(255,255,255,0.6) !important; font-weight: 600; font-size: 0.82rem; }
+        .elv-unavailable { font-size: 0.75rem; color: rgba(255,255,255,0.25); font-style: italic; }
+        .recycling-note { font-size: 0.72rem; opacity: 0.4; font-style: italic; margin-left: 4px; }
       `}</style>
 
       <h1 className="text-center mb-lg">Compare Vehicles</h1>
@@ -462,7 +520,6 @@ export default function Compare() {
                 const recyclingKg  = lc.recycling_kg ?? 0;
                 const hasRecycling = recyclingKg > 0;
                 const isEVType     = ["BEV", "EV", "PHEV"].includes(lc.vehicle_type);
-                const mat          = lc.recycling_materials;
 
                 return (
                   <div key={i} className="card comparison-card">
@@ -486,10 +543,10 @@ export default function Compare() {
                         </span>
                       </div>
 
-                      {/* ── Recycling — always shown ── */}
-                      <div className="emission-value recycling-row">
+                      {/* Battery recycling row */}
+                      <div className="emission-value" style={{ marginTop: 2 }}>
                         <span className="emission-label">
-                          ♻️ End-of-Life Recycling (fixed)
+                          Battery recycling (EoL)
                           {!isEVType && <span className="recycling-note">(no Li-ion pack)</span>}
                         </span>
                         <span className="emission-number" style={{ color: hasRecycling ? "inherit" : "rgba(255,255,255,0.28)" }}>
@@ -505,30 +562,8 @@ export default function Compare() {
                         </span>
                       </div>
 
-                      {/* ELV material flow box — only if backend returned it */}
-                      {mat && (mat.metal_recovered_kg != null) && (
-                        <div className="elv-box">
-                          <div className="elv-box-title">ELV Material Recovery</div>
-                          {mat.dismantled_mass_kg != null && (
-                            <div className="elv-row">
-                              <span>Vehicle mass processed</span>
-                              <span className="elv-neutral">{mat.dismantled_mass_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg</span>
-                            </div>
-                          )}
-                          {mat.metal_recovered_kg != null && (
-                            <div className="elv-row">
-                              <span>↩ Metals recovered</span>
-                              <span className="elv-positive">{mat.metal_recovered_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg</span>
-                            </div>
-                          )}
-                          {mat.asr_waste_kg != null && (
-                            <div className="elv-row">
-                              <span>🗑 Shredder residue (ASR)</span>
-                              <span className="elv-negative">{mat.asr_waste_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      {/* ELV material flow — ALL types, always shown */}
+                      <ElvBox mat={lc.recycling_materials} vehicleType={lc.vehicle_type} />
 
                       {/* Total */}
                       <div className="emission-value emission-value--total" style={{ marginTop: 8 }}>
@@ -596,7 +631,7 @@ export default function Compare() {
                   const bgColors     = ["#00C853", "#69F0AE"];
                   const borderColors = ["#009624", "#2bbd7e"];
                   if (recyclingKg > 0) {
-                    labels.push("End-of-Life Recycling (fixed)");
+                    labels.push("Battery Recycling (fixed)");
                     dataPoints.push(recyclingKg);
                     bgColors.push("#B2DFDB");
                     borderColors.push("#80CBC4");
@@ -690,7 +725,7 @@ export default function Compare() {
                             <strong>{aiSummary.winner_stats.manufacturing_total_kg?.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg</strong>
                           </div>
                           <div className="ai-winner-stat">
-                            <span>♻️ Recycling</span>
+                            <span>Battery Recycling</span>
                             <strong>
                               {(aiSummary.winner_stats.recycling_kg ?? 0) > 0
                                 ? `${aiSummary.winner_stats.recycling_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg`

@@ -32,25 +32,60 @@ def home():
 # VEHICLE LIST
 # ==================================================
 @app.route("/vehicles")
+# ==================================================
+# VEHICLE LIST  — updated route (replace in app.py)
+# Adds optional ?vehicle_type= filter for parallel
+# per-type initial loads on the frontend.
+# ==================================================
+
+@app.route("/vehicles")
 def get_vehicles():
     import math
 
-    page  = int(request.args.get("page", 1))
-    limit = int(request.args.get("limit", 200))
-    offset = (page - 1) * limit
+    page         = int(request.args.get("page", 1))
+    limit        = int(request.args.get("limit", 200))
+    vehicle_type = request.args.get("vehicle_type", "").strip().upper() or None
+    offset       = (page - 1) * limit
 
     conn = get_db_connection()
     cur  = conn.cursor()
 
-    cur.execute("SELECT COUNT(*) FROM vehicles")
-    total = cur.fetchone()[0]
-
-    cur.execute("""
-        SELECT brand, model, year, vehicle_type
-        FROM vehicles
-        ORDER BY brand, model
-        LIMIT %s OFFSET %s
-    """, (limit, offset))
+    if vehicle_type:
+        # BEV and EV are stored as either — treat them as equivalent
+        if vehicle_type == "EV":
+            cur.execute(
+                "SELECT COUNT(*) FROM vehicles WHERE vehicle_type IN ('EV','BEV')"
+            )
+            total = cur.fetchone()[0]
+            cur.execute("""
+                SELECT brand, model, year, vehicle_type
+                FROM vehicles
+                WHERE vehicle_type IN ('EV','BEV')
+                ORDER BY brand, model
+                LIMIT %s OFFSET %s
+            """, (limit, offset))
+        else:
+            cur.execute(
+                "SELECT COUNT(*) FROM vehicles WHERE vehicle_type = %s",
+                (vehicle_type,)
+            )
+            total = cur.fetchone()[0]
+            cur.execute("""
+                SELECT brand, model, year, vehicle_type
+                FROM vehicles
+                WHERE vehicle_type = %s
+                ORDER BY brand, model
+                LIMIT %s OFFSET %s
+            """, (vehicle_type, limit, offset))
+    else:
+        cur.execute("SELECT COUNT(*) FROM vehicles")
+        total = cur.fetchone()[0]
+        cur.execute("""
+            SELECT brand, model, year, vehicle_type
+            FROM vehicles
+            ORDER BY brand, model
+            LIMIT %s OFFSET %s
+        """, (limit, offset))
 
     rows = cur.fetchall()
     cur.close()
@@ -60,12 +95,11 @@ def get_vehicles():
         "vehicles": [
             {"brand": r[0], "model": r[1], "year": r[2], "vehicle_type": r[3]}
             for r in rows
-        ],  
+        ],
         "total": total,
-        "page": page,
+        "page":  page,
         "pages": math.ceil(total / limit)
     })
-
 
 # ==================================================
 # VEHICLE DETAIL

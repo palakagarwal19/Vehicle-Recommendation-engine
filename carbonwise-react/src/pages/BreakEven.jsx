@@ -38,14 +38,12 @@ const badgeClass = t => {
   return m[t.toUpperCase()] ?? t.toLowerCase();
 };
 
-// ── Selector panel — used for both Vehicle A and Vehicle B ──────────────────
-function VehicleSelector({ side, vehicles, vehiclesLoading, value, onChange }) {
-  const { powertrain, brand, model, year } = value;
+// ── Selector panel — pure/stateless, parent owns all state ──────────────────
+function VehicleSelector({ side, vehicles, vehiclesLoading, sel, setSel }) {
+  const { powertrain, brand, model, year } = sel;
 
-  // Filter pool by selected powertrain (or all if none selected)
   const pool = useMemo(() => {
     if (!powertrain) return vehicles;
-    // EV selector shows both EV and BEV
     if (powertrain === "EV") return vehicles.filter(v => v.vehicle_type === "EV" || v.vehicle_type === "BEV");
     return vehicles.filter(v => v.vehicle_type === powertrain);
   }, [powertrain, vehicles]);
@@ -62,26 +60,26 @@ function VehicleSelector({ side, vehicles, vehiclesLoading, value, onChange }) {
       : [],
     [brand, model, pool]);
 
-  // Resolve full vehicle object
+  // Resolved vehicle — computed here, stored in parent via setSel
   const resolved = useMemo(() =>
     (brand && model && year)
       ? pool.find(v => v.brand === brand && v.model === model && String(v.year) === String(year)) ?? null
       : null,
     [brand, model, year, pool]);
 
-  // Propagate resolved vehicle up
-  const prevResolved = useRef(null);
+  // Keep parent in sync — only when resolved actually changes
+  const prevRef = useRef(undefined);
   useEffect(() => {
-    if (resolved !== prevResolved.current) {
-      prevResolved.current = resolved;
-      onChange({ ...value, resolved });
+    if (resolved !== prevRef.current) {
+      prevRef.current = resolved;
+      setSel(s => ({ ...s, resolved }));
     }
-  }, [resolved]);
+  }, [resolved, setSel]);
 
-  const set = patch => onChange({ ...value, ...patch, resolved: null });
+  // Patch helper — always uses functional setSel to avoid stale closure
+  const patch = obj => setSel(s => ({ ...s, ...obj }));
 
   const label = side === "a" ? "Vehicle A" : "Vehicle B";
-  const defaultPt = side === "a" ? "EV" : "ICE";
 
   return (
     <div className="be-selector-col">
@@ -97,16 +95,15 @@ function VehicleSelector({ side, vehicles, vehiclesLoading, value, onChange }) {
         {POWERTRAIN_TYPES.map(pt => (
           <button
             key={pt}
-            className={`be-type-pill badge badge-${badgeClass(pt)} ${powertrain === pt ? "be-type-pill--active" : ""}`}
-            onClick={() => set({ powertrain: pt, brand: "", model: "", year: "" })}
+            className={`be-type-pill be-type-pill--${badgeClass(pt)} ${powertrain === pt ? "be-type-pill--active" : ""}`}
+            onClick={() => patch({ powertrain: pt, brand: "", model: "", year: "", resolved: null })}
           >
             {pt}
           </button>
         ))}
         <button
-          className={`be-type-pill ${!powertrain ? "be-type-pill--active" : ""}`}
-          style={{ opacity: 0.5 }}
-          onClick={() => set({ powertrain: "", brand: "", model: "", year: "" })}
+          className={`be-type-pill be-type-pill--all ${!powertrain ? "be-type-pill--active" : ""}`}
+          onClick={() => patch({ powertrain: "", brand: "", model: "", year: "", resolved: null })}
         >
           All
         </button>
@@ -118,7 +115,7 @@ function VehicleSelector({ side, vehicles, vehiclesLoading, value, onChange }) {
           <select
             className="filter-select"
             value={brand}
-            onChange={e => set({ brand: e.target.value, model: "", year: "" })}
+            onChange={e => patch({ brand: e.target.value, model: "", year: "", resolved: null })}
           >
             <option value="">All Brands</option>
             {vehiclesLoading
@@ -133,7 +130,7 @@ function VehicleSelector({ side, vehicles, vehiclesLoading, value, onChange }) {
             className="filter-select"
             value={model}
             disabled={!brand}
-            onChange={e => set({ model: e.target.value, year: "" })}
+            onChange={e => patch({ model: e.target.value, year: "", resolved: null })}
           >
             <option value="">Select Model</option>
             {models.map(m => <option key={m}>{m}</option>)}
@@ -146,7 +143,7 @@ function VehicleSelector({ side, vehicles, vehiclesLoading, value, onChange }) {
             className="filter-select"
             value={year}
             disabled={!model}
-            onChange={e => set({ year: e.target.value })}
+            onChange={e => patch({ year: e.target.value, resolved: null })}
           >
             <option value="">Select Year</option>
             {years.map(y => <option key={y}>{y}</option>)}
@@ -189,36 +186,74 @@ export default function BreakEven() {
   const [calculating,   setCalculating]   = useState(false);
   const [calcError,     setCalcError]     = useState(null);
 
-  // ── Load vehicles — parallel pages, same as Compare ─────────────────────
+  // ── Load vehicles ────────────────────────────────────────────────────────
+  // Phase 1 (instant):     4 parallel requests — 50 of each type → UI ready
+  // Phase 2 (background):  stream remaining pages per type, merging as they land
   useEffect(() => { loadVehicles(); }, []);
 
   async function loadVehicles() {
     setVehiclesLoading(true);
     setVehicles([]);
-    const PAGE_SIZE = 200;
 
-    // Fetch page 1 first to get totalPages, then fetch all remaining pages in parallel
+    const TYPES    = ["EV", "HEV", "PHEV", "ICE"];
+    const FIRST_N  = 50;   // per type shown immediately
+    const BG_LIMIT = 200;  // page size for background pages
+
+    // ── Dedup helper ────────────────────────────────────────────────────────
+    const key = v => `${v.brand}|${v.model}|${v.year}`;
+
     try {
-      const firstRes  = await fetch(`${API}/vehicles?page=1&limit=${PAGE_SIZE}`);
-      const firstJson = await firstRes.json();
-      const firstBatch = Array.isArray(firstJson) ? firstJson : firstJson.vehicles ?? [];
-      const totalPages = firstJson.pages ?? 1;
+      // ── Phase 1: 4 requests fired simultaneously ──────────────────────────
+      const phase1 = await Promise.all(
+        TYPES.map(t =>
+          fetch(`${API}/vehicles?page=1&limit=${FIRST_N}&vehicle_type=${t}`)
+            .then(r => r.json())
+            .then(j => ({
+              batch:      Array.isArray(j) ? j : (j.vehicles ?? []),
+              total:      j.total      ?? 0,
+              totalPages: Math.ceil((j.total ?? 0) / BG_LIMIT),
+              type:       t,
+            }))
+        )
+      );
 
-      setVehicles(firstBatch);
+      // Merge initial batches, deduplicate (EV/BEV may overlap)
+      const seen    = new Set();
+      const initial = [];
+      for (const { batch } of phase1) {
+        for (const v of batch) {
+          const k = key(v);
+          if (!seen.has(k)) { seen.add(k); initial.push(v); }
+        }
+      }
+      setVehicles(initial);
       setVehiclesLoading(false);
 
-      if (totalPages > 1) {
-        setVehiclesLoadingMore(true);
-        // Fetch all remaining pages simultaneously
-        const pageNums = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
-        const results  = await Promise.all(
-          pageNums.map(p =>
-            fetch(`${API}/vehicles?page=${p}&limit=${PAGE_SIZE}`)
-              .then(r => r.json())
-              .then(j => (Array.isArray(j) ? j : j.vehicles ?? []))
-          )
-        );
-        setVehicles(prev => [...prev, ...results.flat()]);
+      // ── Phase 2: background pages, type by type, page by page ─────────────
+      const needsMore = phase1.some(({ total }) => total > FIRST_N);
+      if (!needsMore) return;
+
+      setVehiclesLoadingMore(true);
+
+      for (const { type, total } of phase1) {
+        if (total <= FIRST_N) continue;
+
+        // Pages 2, 3, … at BG_LIMIT each (page 1 already covered FIRST_N rows)
+        const bgPages = Math.ceil((total - FIRST_N) / BG_LIMIT);
+
+        for (let p = 0; p < bgPages; p++) {
+          const res  = await fetch(
+            `${API}/vehicles?page=${p + 2}&limit=${BG_LIMIT}&vehicle_type=${type}`
+          );
+          const json = await res.json();
+          const batch = Array.isArray(json) ? json : (json.vehicles ?? []);
+
+          setVehicles(prev => {
+            const existingKeys = new Set(prev.map(key));
+            const fresh = batch.filter(v => !existingKeys.has(key(v)));
+            return fresh.length ? [...prev, ...fresh] : prev;
+          });
+        }
       }
     } catch (err) {
       console.error("Failed to load vehicles:", err);
@@ -407,8 +442,8 @@ export default function BreakEven() {
             side="a"
             vehicles={vehicles}
             vehiclesLoading={vehiclesLoading}
-            value={selA}
-            onChange={setSelA}
+            sel={selA}
+            setSel={setSelA}
           />
 
           <div className="be-vs-divider">VS</div>
@@ -417,8 +452,8 @@ export default function BreakEven() {
             side="b"
             vehicles={vehicles}
             vehiclesLoading={vehiclesLoading}
-            value={selB}
-            onChange={setSelB}
+            sel={selB}
+            setSel={setSelB}
           />
         </div>
 

@@ -18,7 +18,6 @@ def get_connection():
 
 GRID_CACHE = {}
 
-
 def load_caches():
     conn = get_connection()
     cur  = conn.cursor()
@@ -30,7 +29,6 @@ def load_caches():
         GRID_CACHE[(country_code.upper(), year)] = value
     cur.close()
     conn.close()
-
 
 load_caches()
 
@@ -52,6 +50,17 @@ COUNTRY_CODE_MAP = {
     "UK": "GBR", "CN": "CHN", "JP": "JPN", "IN": "IND",
 }
 
+# ── Average curb weights (kg) by vehicle type — used when DB weight is NULL ──
+# Sources: EPA/NHTSA fleet averages, GREET vehicle cycle defaults
+AVERAGE_VEHICLE_WEIGHT_KG = {
+    "ICE":  1400,   # typical compact/mid-size ICE
+    "HEV":  1450,   # slightly heavier than ICE (NiMH pack)
+    "PHEV": 1700,   # heavier due to larger battery
+    "EV":   1900,   # BEV — large pack adds significant mass
+    "BEV":  1900,
+    "FCV":  1800,
+}
+
 
 # =====================================================
 # HELPERS
@@ -70,6 +79,20 @@ def electric_emissions_per_km(vehicle, grid_factor):
     if wh_per_km is None:
         return None, f"electric_wh_per_km missing for {model}"
     return (float(wh_per_km) / 1000) * float(grid_factor), None
+
+
+def _resolve_vehicle_weight(vehicle):
+    """
+    Returns (weight_kg, is_estimate).
+    Tries vehicle_weight_kg, then curb_weight_kg, then type-based average.
+    """
+    w = vehicle.get("vehicle_weight_kg") or vehicle.get("curb_weight_kg")
+    if w and float(w) > 0:
+        return float(w), False
+
+    vtype   = vehicle.get("vehicle_type", "ICE")
+    default = AVERAGE_VEHICLE_WEIGHT_KG.get(vtype, 1500)
+    return float(default), True
 
 
 # =====================================================
@@ -181,8 +204,12 @@ def calculate_lifecycle(vehicle, country_code, year,
             + operational_total_kg       (scales with distance_km)
             + recycling_kg               (end-of-life battery, fixed)
 
-    Per-km rates amortised over lifetime_km (278,600 km standard).
-    distance_km is the user-requested distance for total calculations.
+    ELV material flow applies to ALL vehicle types.
+    When vehicle_weight_kg / curb_weight_kg is NULL, a type-based average
+    is used so the ELV box always renders in the frontend:
+        ICE/HEV  ~1,400–1,450 kg
+        PHEV     ~1,700 kg
+        EV/BEV   ~1,900 kg
     """
     d = distance_km if distance_km is not None else lifetime_km
 
@@ -213,16 +240,22 @@ def calculate_lifecycle(vehicle, country_code, year,
     op_total_kg    = round((op_g_per_km * d) / 1000, 2)
     total_for_d_kg = round(manuf_total_kg + op_total_kg + recycle_kg, 2)
 
-    # -- ELV material flow (mass-balance, no new CO₂ constants) --------------
-    vehicle_weight_kg = vehicle.get("vehicle_weight_kg") or vehicle.get("curb_weight_kg")
+    # -- ELV material flow ----------------------------------------------------
+    # Applies to all vehicle types. Falls back to type-based average weight
+    # when the DB has no vehicle_weight_kg / curb_weight_kg, so the frontend
+    # always receives real numbers rather than nulls.
+    vehicle_weight_kg, weight_is_estimate = _resolve_vehicle_weight(vehicle)
     try:
         elv_materials = recycling_material_flow(vehicle_weight_kg)
+        elv_materials["weight_is_estimate"] = weight_is_estimate
+        elv_materials["vehicle_weight_kg"]  = round(vehicle_weight_kg, 0)
     except (ValueError, TypeError):
-        # Weight missing or zero — return None fields rather than hard-failing
         elv_materials = {
             "dismantled_mass_kg": None,
             "metal_recovered_kg": None,
             "asr_waste_kg":       None,
+            "weight_is_estimate": None,
+            "vehicle_weight_kg":  None,
         }
 
     return {
@@ -248,6 +281,6 @@ def calculate_lifecycle(vehicle, country_code, year,
         "operational_total_kg":     op_total_kg,
         "total_for_distance_kg":    total_for_d_kg,
 
-        # ELV material flow
+        # ELV material flow (all vehicle types)
         "recycling_materials":      elv_materials,
     }
