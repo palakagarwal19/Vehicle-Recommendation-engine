@@ -16,22 +16,13 @@ def get_connection():
 # CACHE TABLES (LOAD ONCE)
 # =====================================================
 
-FUEL_CACHE = {}
 GRID_CACHE = {}
 
 
 def load_caches():
 
     conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT fuel_type, wtt_gco2_per_mj, energy_density_mj_per_l
-        FROM fuel_upstream_emissions
-    """)
-
-    for fuel, wtt, density in cur.fetchall():
-        FUEL_CACHE[fuel.lower()] = (wtt, density)
+    cur  = conn.cursor()
 
     cur.execute("""
         SELECT country_code, year, carbon_intensity_gco2_per_kwh
@@ -52,29 +43,20 @@ load_caches()
 # CONSTANTS
 # =====================================================
 
-# Powertrain type sets — DB uses "BEV", legacy may use "EV"
 ICE_TYPES  = {"ICE"}
 HEV_TYPES  = {"HEV"}
 PHEV_TYPES = {"PHEV"}
 EV_TYPES   = {"EV", "BEV"}
 
-# Direct combustion emission factors (g CO₂ per litre)
-# Source: IPCC / GREET — full combustion, tank-to-wheel
-FUEL_EF = {
-    "gasoline": 2392,
-    "petrol":   2392,   # alias
-    "diesel":   2640,
-    "e85":      1540,   # 85% ethanol blend
-    "lpg":      1625,
-    "cng":      2040,
-}
-
-# PHEV real-world electric driving share (utility factor)
-# EU/ICCT real-world data: ~55-65% electric; we use 0.6
+# PHEV real-world electric driving share (ICCT utility factor)
 PHEV_ELECTRIC_SHARE = 0.6
 
-# Default lifetime km for per-km amortisation of manufacturing
 DEFAULT_LIFETIME_KM = 278_600
+
+COUNTRY_CODE_MAP = {
+    "US": "USA", "DE": "DEU", "FR": "FRA",
+    "UK": "GBR", "CN": "CHN", "JP": "JPN", "IN": "IND",
+}
 
 
 # =====================================================
@@ -84,57 +66,18 @@ DEFAULT_LIFETIME_KM = 278_600
 def get_grid_intensity(country_code, year):
     """Return grid carbon intensity (g CO₂/kWh) for country + year."""
 
-    COUNTRY_CODE_MAP = {
-        "US": "USA", "DE": "DEU", "FR": "FRA",
-        "UK": "GBR", "CN": "CHN", "JP": "JPN", "IN": "IND",
-    }
+    code = country_code.upper()
 
-    country_code = country_code.upper()
+    if code in COUNTRY_CODE_MAP:
+        code = COUNTRY_CODE_MAP[code]
 
-    if country_code in COUNTRY_CODE_MAP:
-        country_code = COUNTRY_CODE_MAP[country_code]
-
-    return GRID_CACHE.get((country_code, year))
-
-
-def get_fuel_ef(fuel_type):
-    """Return direct combustion emission factor (g CO₂/L) for a fuel type."""
-    if not fuel_type:
-        return None
-    return FUEL_EF.get(fuel_type.lower().strip())
-
-
-def fuel_emissions_per_km(vehicle):
-    """
-    ICE / HEV / PHEV fuel path:
-        E_fuel/km = (Fuel_L/100km / 100) × EF_fuel  [g CO₂/km]
-
-    Returns (value, error_string_or_None)
-    """
-    fuel_type   = vehicle.get("fuel_type")
-    l_per_100km = vehicle.get("fuel_l_per_100km")
-    model       = vehicle.get("model", "unknown")
-
-    if l_per_100km is None:
-        return None, f"fuel_l_per_100km missing for {model}"
-
-    ef = get_fuel_ef(fuel_type)
-
-    if ef is None:
-        return None, (
-            f"No emission factor for fuel_type='{fuel_type}' on {model}. "
-            f"Known types: {list(FUEL_EF.keys())}"
-        )
-
-    return (float(l_per_100km) / 100) * ef, None
+    return GRID_CACHE.get((code, year))
 
 
 def electric_emissions_per_km(vehicle, grid_factor):
     """
-    EV / PHEV electric path:
-        E_elec/km = (Wh/km / 1000) × CI_grid  [g CO₂/km]
-
-    Returns (value, error_string_or_None)
+    E_elec/km = (Wh/km / 1000) × CI_grid  [g CO₂/km]
+    Returns (value, error_or_None)
     """
     wh_per_km = vehicle.get("electric_wh_per_km")
     model     = vehicle.get("model", "unknown")
@@ -152,9 +95,9 @@ def electric_emissions_per_km(vehicle, grid_factor):
 def get_vehicle(filters):
 
     conn = get_connection()
-    cur = conn.cursor()
+    cur  = conn.cursor()
 
-    query = "SELECT * FROM vehicles WHERE TRUE"
+    query  = "SELECT * FROM vehicles WHERE TRUE"
     params = []
     allowed_filters = {"brand", "model", "year", "vehicle_type"}
 
@@ -185,12 +128,12 @@ def get_vehicle(filters):
 def calculate_operational(vehicle, country_code=None, year=None,
                            lifetime_km=DEFAULT_LIFETIME_KM):
     """
-    Returns operational_g_per_km using the correct formula per powertrain:
+    Per-powertrain operational emissions (g CO₂/km):
 
-      ICE  : E = (L/km) × EF_fuel
-      HEV  : E = (L/km) × EF_fuel          (no external grid charging)
-      PHEV : E = Sev × E_elec + (1-Sev) × E_fuel    where Sev = 0.6
-      BEV  : E = (Wh/km / 1000) × CI_grid
+      ICE  : co2_wltp_gpkm  (official WLTP tailpipe figure, already in DB)
+      HEV  : co2_wltp_gpkm  (WLTP accounts for regen; no grid charging)
+      PHEV : Sev × E_elec + (1-Sev) × co2_wltp_gpkm   (Sev = 0.6)
+      BEV  : (Wh/km / 1000) × CI_grid
     """
 
     vtype = vehicle.get("vehicle_type")
@@ -199,26 +142,23 @@ def calculate_operational(vehicle, country_code=None, year=None,
     # ── ICE ──────────────────────────────────────────────────────────────────
     if vtype in ICE_TYPES:
 
-        e_fuel, err = fuel_emissions_per_km(vehicle)
-        if err:
-            return {"error": err}
+        tailpipe = vehicle.get("co2_wltp_gpkm")
+        if tailpipe is None:
+            return {"error": f"co2_wltp_gpkm missing for ICE vehicle {model}"}
 
-        per_km = e_fuel
+        per_km = float(tailpipe)
 
     # ── HEV ──────────────────────────────────────────────────────────────────
-    # HEV recovers energy via regenerative braking — no external grid charge.
-    # Emissions still driven entirely by fuel consumption.
     elif vtype in HEV_TYPES:
 
-        e_fuel, err = fuel_emissions_per_km(vehicle)
-        if err:
-            return {"error": err}
+        tailpipe = vehicle.get("co2_wltp_gpkm")
+        if tailpipe is None:
+            return {"error": f"co2_wltp_gpkm missing for HEV vehicle {model}"}
 
-        per_km = e_fuel
+        per_km = float(tailpipe)
 
     # ── PHEV ─────────────────────────────────────────────────────────────────
-    # Weighted split: 60% electric driving, 40% fuel driving (ICCT utility factor)
-    #   E_op/km = Sev × E_elec/km + (1 - Sev) × E_fuel/km
+    # 60% electric driving (grid), 40% fuel driving (WLTP tailpipe figure)
     elif vtype in PHEV_TYPES:
 
         if not country_code or not year:
@@ -232,12 +172,12 @@ def calculate_operational(vehicle, country_code=None, year=None,
         if err:
             return {"error": err}
 
-        e_fuel, err = fuel_emissions_per_km(vehicle)
-        if err:
-            return {"error": err}
+        tailpipe = vehicle.get("co2_wltp_gpkm")
+        if tailpipe is None:
+            return {"error": f"co2_wltp_gpkm missing for PHEV vehicle {model}"}
 
         sev    = PHEV_ELECTRIC_SHARE
-        per_km = sev * e_elec + (1 - sev) * e_fuel
+        per_km = sev * e_elec + (1 - sev) * float(tailpipe)
 
     # ── BEV / EV ─────────────────────────────────────────────────────────────
     elif vtype in EV_TYPES:
@@ -278,15 +218,19 @@ def calculate_operational(vehicle, country_code=None, year=None,
 # =====================================================
 
 def calculate_lifecycle(vehicle, country_code, year,
-                         lifetime_km=DEFAULT_LIFETIME_KM):
+                         lifetime_km=DEFAULT_LIFETIME_KM,
+                         distance_km=None):
     """
     Full lifecycle emissions.
 
-    Per-km chart value (methodology section 7):
-        E_total/km = E_op/km + (manufacturing_total_kg × 1000) / lifetime_km
+    Per-km rates are always calculated over lifetime_km (278,600 km).
+    distance_km is the user-requested trip distance for total calculations.
+    If distance_km is None, defaults to lifetime_km.
 
-    Returns per-km values for charts AND totals for distance-based calculations.
+    E_total = E_man_total_kg + (E_op/km × distance_km / 1000)
     """
+
+    d = distance_km if distance_km is not None else lifetime_km
 
     operational = calculate_operational(vehicle, country_code, year, lifetime_km)
 
@@ -294,31 +238,37 @@ def calculate_lifecycle(vehicle, country_code, year,
         return operational
 
     try:
-        manuf_per_km_kg = manufacturing_per_km(vehicle)  # kg CO₂/km
+        manuf_per_km_kg = manufacturing_per_km(vehicle)   # kg CO₂/km amortised over lifetime
     except ValueError as e:
         return {"error": f"Manufacturing calculation failed: {str(e)}"}
 
-    if manuf_per_km_kg is None:
-        manuf_per_km_kg = 0
-
     op_g_per_km     = operational["operational_g_per_km"]
-    manuf_g_per_km  = round(manuf_per_km_kg * 1000, 2)       # kg → g
+    manuf_g_per_km  = round(manuf_per_km_kg * 1000, 2)        # kg → g, amortised
     total_g_per_km  = round(op_g_per_km + manuf_g_per_km, 2)
-    manuf_total_kg  = round(manuf_per_km_kg * lifetime_km, 2) # for distance slider
+
+    # Fixed one-time manufacturing cost (independent of distance)
+    manuf_total_kg  = round(manuf_per_km_kg * lifetime_km, 2)
+
+    # Distance-scaled totals
+    op_total_kg     = round((op_g_per_km * d) / 1000, 2)
+    total_for_d_kg  = round(manuf_total_kg + op_total_kg, 2)
 
     return {
-        # Identity — included so /compare-multiple can match by brand+model+year
+        # Identity
         "vehicle":                  vehicle["model"],
+        "model":                    vehicle["model"],
         "brand":                    vehicle.get("brand", ""),
         "year":                     vehicle.get("year"),
         "vehicle_type":             vehicle["vehicle_type"],
 
-        # Per-km (bar + donut charts)
+        # Per-km rates (for charts — always over lifetime)
         "operational_g_per_km":     op_g_per_km,
         "manufacturing_g_per_km":   manuf_g_per_km,
         "total_g_per_km":           total_g_per_km,
 
-        # Totals (break-even + distance slider on frontend)
-        "manufacturing_total_kg":   manuf_total_kg,
-        "operational_lifetime_kg":  operational["operational_lifetime_kg"],
+        # Distance-based totals (change with distance_km)
+        "distance_km":              d,
+        "manufacturing_total_kg":   manuf_total_kg,   # fixed one-time cost
+        "operational_total_kg":     op_total_kg,       # scales with distance
+        "total_for_distance_kg":    total_for_d_kg,    # manuf + operational
     }

@@ -200,13 +200,12 @@ class CarbonWiseAPI {
    * @param {Array} vehicles - Array of vehicle objects
    * @returns {Promise<Array>} Comparison results
    */
-  async compareMultiple(country, year, vehicles) {
-    return this.request('/compare-multiple', {
-      method: 'POST',
-      data: { country, year, vehicles }
-    });
-  }
-
+ async compareMultiple(country, year, vehicles, distanceKm) {
+  return this.request('/compare-multiple', {
+    method: 'POST',
+    data: { country, year, vehicles, distance_km: distanceKm }
+  });
+}
   /**
    * Get vehicle recommendations based on usage patterns
    * @param {number} dailyKm - Daily kilometers driven

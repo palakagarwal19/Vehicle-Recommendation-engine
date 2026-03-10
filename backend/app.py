@@ -10,6 +10,7 @@ from greenwashing import evaluate_claims
 from carbon_index import carbon_score
 from annual_impact import annual_emissions
 from grid_sensitivity import grid_sensitivity
+import math
 
 app = Flask(__name__)
 CORS(app)
@@ -32,32 +33,40 @@ def home():
 # ==================================================
 @app.route("/vehicles")
 def get_vehicles():
+    import math
+
+    page  = int(request.args.get("page", 1))
+    limit = int(request.args.get("limit", 200))
+    offset = (page - 1) * limit
 
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur  = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) FROM vehicles")
+    total = cur.fetchone()[0]
 
     cur.execute("""
         SELECT brand, model, year, vehicle_type
         FROM vehicles
         ORDER BY brand, model
-    """)
+        LIMIT %s OFFSET %s
+    """, (limit, offset))
 
     rows = cur.fetchall()
-
-    vehicles = [
-        {
-            "brand": r[0],
-            "model": r[1],
-            "year": r[2],
-            "vehicle_type": r[3]
-        }
-        for r in rows
-    ]
-
     cur.close()
     conn.close()
 
-    return jsonify(vehicles)
+    return jsonify({
+        "vehicles": [
+            {"brand": r[0], "model": r[1], "year": r[2], "vehicle_type": r[3]}
+            for r in rows
+        ],  
+        "total": total,
+        "page": page,
+        "pages": math.ceil(total / limit)
+    })
+
+
 # ==================================================
 # VEHICLE DETAIL
 # ==================================================
@@ -93,6 +102,82 @@ def vehicle_detail():
     columns = [desc[0] for desc in cur.description]
 
     return jsonify(dict(zip(columns, row)))
+
+
+# ==================================================
+# WINNER DETAIL  (image + specs from afdc_vehicles)
+# Called in parallel with /ai-summary from the frontend
+# ==================================================
+
+@app.route("/winner-detail", methods=["POST"])
+def winner_detail():
+    """
+    Given brand/model/year, returns:
+      - image_url  : best available image from afdc_vehicles (or null)
+      - specs      : { range_km, fuel_economy, manufacturer_url } (nulls if missing)
+
+    Tries exact year first, then closest year fallback — same logic as ai_summary.py.
+    """
+    data  = request.json
+    brand = data.get("brand", "")
+    model = data.get("model", "")
+    year  = data.get("year")
+
+    if not brand or not model:
+        return jsonify({"image_url": None, "specs": None}), 200
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+
+    # Exact year first
+    cur.execute("""
+        SELECT image_url, manufacturer_url
+        FROM afdc_vehicles
+        WHERE LOWER(brand) = LOWER(%s)
+          AND LOWER(model)  LIKE LOWER(%s)
+          AND year = %s
+          AND image_url IS NOT NULL
+          AND image_url != 'NaN'
+        LIMIT 1
+    """, (brand, f"%{model}%", year))
+
+    row = cur.fetchone()
+
+    # Closest year fallback
+    if not row:
+        cur.execute("""
+            SELECT image_url, manufacturer_url
+            FROM afdc_vehicles
+            WHERE LOWER(brand) = LOWER(%s)
+              AND LOWER(model)  LIKE LOWER(%s)
+              AND image_url IS NOT NULL
+              AND image_url != 'NaN'
+            ORDER BY ABS(year - %s)
+            LIMIT 1
+        """, (brand, f"%{model}%", year))
+        row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    manufacturer_url = None
+    if row:
+        raw_image_url, manufacturer_url = row
+        # Sanitise manufacturer_url
+        if manufacturer_url and manufacturer_url.strip() in ("", "NaN"):
+            manufacturer_url = None
+
+    # Use full resolution chain: DB → Wikimedia (Gemini query) → Wikimedia (generic)
+    # /winner-detail is called before Gemini responds, so no image_query yet — that's fine,
+    # get_vehicle_image will fall through to the generic "<brand> <model> <year> car" query.
+    image_url = get_vehicle_image(brand, model, year)
+
+    specs = {"manufacturer_url": manufacturer_url}
+
+    return jsonify({
+        "image_url": image_url,
+        "specs": specs
+    })
 
 
 # ==================================================
@@ -142,24 +227,30 @@ def lifecycle():
 # ==================================================
 # MULTI VEHICLE COMPARISON
 # ==================================================
+
 @app.route("/compare-multiple", methods=["POST"])
 def compare_multiple():
 
     data = request.json
+
     country = data.get("country")
     year = data.get("year")
+    distance_km = data.get("distance_km")
     vehicles_input = data.get("vehicles")
 
     if not vehicles_input:
         return jsonify({"error": "vehicles required"}), 400
 
     results = []
+
     conn = get_db_connection()
     cur = conn.cursor()
 
     for v in vehicles_input:
+
         cur.execute("""
-            SELECT * FROM vehicles
+            SELECT *
+            FROM vehicles
             WHERE brand=%s AND model=%s AND year=%s
             LIMIT 1
         """, (v["brand"], v["model"], v["year"]))
@@ -178,11 +269,8 @@ def compare_multiple():
         columns = [desc[0] for desc in cur.description]
         vehicle = dict(zip(columns, row))
 
-        print(f"[compare] {v['brand']} {v['model']} fields: fuel_type={vehicle.get('fuel_type')}, co2_wltp_gpkm={vehicle.get('co2_wltp_gpkm')}, fuel_l_per_100km={vehicle.get('fuel_l_per_100km')}")
+        lifecycle = calculate_lifecycle(vehicle, country, year, distance_km=distance_km)
 
-        lifecycle = calculate_lifecycle(vehicle, country, year)
-
-        # Always append — include error field if calculation failed
         results.append({
             "brand": vehicle["brand"],
             "model": vehicle["model"],
@@ -194,6 +282,7 @@ def compare_multiple():
     conn.close()
 
     return jsonify(results)
+
 
 # ==================================================
 # RECOMMENDATION ENGINE
@@ -304,6 +393,7 @@ def greenwashing():
         ]
     })
 
+
 # ==================================================
 # CARBON SCORE
 # ==================================================
@@ -373,6 +463,8 @@ def get_grid_data():
         }
 
     return jsonify(grid)
+
+
 # ==================================================
 # COUNTRIES (FROM GRID DATA)
 # ==================================================
@@ -395,6 +487,7 @@ def countries():
     conn.close()
 
     return jsonify(countries)
+
 
 @app.route("/vehicle-search")
 def vehicle_search():
@@ -433,16 +526,14 @@ def vehicle_search():
     conn.close()
 
     return jsonify(vehicles)
+
+
 # ==================================================
 # GRID DATA
 # ==================================================
 
 @app.route("/grid-data")
 def grid_data():
-    """
-    Get grid intensity data for all countries
-    Returns the grid_master_v2_2026_clean.json file
-    """
     import json
     
     grid_file = os.path.join(os.path.dirname(__file__), '..', 'data', 'grid_master_v2_2026_clean.json')
@@ -455,6 +546,27 @@ def grid_data():
         return jsonify({"error": "Grid data file not found"}), 404
     except json.JSONDecodeError:
         return jsonify({"error": "Invalid grid data format"}), 500
+
+
+# ==================================================
+# AI SUMMARY  (Gemini)
+# ==================================================
+
+from ai_summary import generate_summary, get_vehicle_image
+
+@app.route("/ai-summary", methods=["POST"])
+def ai_summary():
+    data = request.json
+    vehicles = data.get("vehicles", [])
+    distance_km = data.get("distance_km", 100)
+    if not vehicles:
+        return jsonify({"error": "No vehicles provided"}), 400
+    try:
+        result = generate_summary(vehicles, distance_km)
+        return jsonify(result)
+    except Exception as e:
+        print(f"[ai_summary] ERROR: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 # ==================================================

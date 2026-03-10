@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import "../styles/compare.css";
 import apiClient from "../services/api";
 
@@ -37,14 +37,49 @@ export default function Compare() {
   const [powertrain, setPowertrain] = useState("");
   const [country, setCountry] = useState("US");
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [vehiclesLoading, setVehiclesLoading] = useState(true);
+  const [vehiclesLoadingMore, setVehiclesLoadingMore] = useState(false);
+  const distanceDebounceRef = useRef(null);
+  const [aiSummary, setAiSummary] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(null);
 
   useEffect(() => {
     loadVehicles();
   }, []);
 
   async function loadVehicles() {
-    const data = await apiClient.getAllVehicles();
-    setVehicles(data);
+    setVehiclesLoading(true);
+    setVehicles([]);
+
+    const PAGE_SIZE = 200;
+    let page = 1;
+    let totalPages = 1;
+
+    try {
+      while (page <= totalPages) {
+        const res  = await fetch(`${API}/vehicles?page=${page}&limit=${PAGE_SIZE}`);
+        const json = await res.json();
+
+        const batch = Array.isArray(json) ? json : json.vehicles ?? [];
+        totalPages  = json.pages ?? 1;
+
+        setVehicles(prev => [...prev, ...batch]);
+
+        if (page === 1) {
+          setVehiclesLoading(false);
+          if (totalPages > 1) setVehiclesLoadingMore(true);
+        }
+
+        page++;
+      }
+    } catch (err) {
+      console.error("Failed to load vehicles:", err);
+      setVehiclesLoading(false);
+    } finally {
+      setVehiclesLoadingMore(false);
+    }
   }
 
   async function searchVehicles(query) {
@@ -52,9 +87,11 @@ export default function Compare() {
       loadVehicles();
       return;
     }
+    setVehiclesLoading(true);
     const res = await fetch(`${API}/vehicle-search?q=${query}`);
     const data = await res.json();
     setVehicles(data);
+    setVehiclesLoading(false);
   }
 
   const filteredVehicles = useMemo(() => {
@@ -69,11 +106,12 @@ export default function Compare() {
     );
   }, [brand, model, year, powertrain, vehicles]);
 
-  async function calculateComparison(vehiclesList) {
+  async function calculateComparison(vehiclesList, distanceOverride) {
     if (vehiclesList.length === 0) {
       setSelectedData([]);
       return;
     }
+    setLoading(true);
     try {
       console.group("📡 calculateComparison");
       console.log("▶ Sending vehicles:", vehiclesList.map(v => ({
@@ -81,6 +119,7 @@ export default function Compare() {
       })));
       console.log("▶ Country:", country, "| Grid year: 2023");
 
+      const effectiveDistance = distanceOverride ?? distanceKm;
       const results = await apiClient.compareMultiple(
         country,
         2023,
@@ -88,33 +127,34 @@ export default function Compare() {
           brand: v.brand,
           model: v.model,
           year: v.year
-        }))
+        })),
+        effectiveDistance
       );
 
       console.log("◀ Raw API response:", results);
       console.log("◀ Response length:", results.length, "| Sent:", vehiclesList.length);
-      results.forEach((r, i) => {
-        console.log(`  result[${i}]:`, r);
-      });
 
       const combined = vehiclesList.map(v => {
-        const match = results.find(r => r.vehicle === v.model);
-        console.log(
-          `  Matching "${v.model}" →`,
-          match
-            ? `✅ found (total_g_per_km: ${match.total_g_per_km})`
-            : `❌ NO MATCH — result vehicles are: [${results.map(r => r.vehicle).join(", ")}]`
+        const match = results.find(
+          r => r.brand === v.brand && (r.model === v.model || r.vehicle === v.model) && String(r.year) === String(v.year)
         );
-        return { ...v, lifecycle: match ?? null };
+        return {
+          ...v,
+          lifecycle: (match && !match.error) ? match : null,
+          lifecycleError: match?.error ?? null
+        };
       });
 
-      console.log("◀ Combined selectedData:", combined);
       console.groupEnd();
 
       setSelectedData(combined);
+      setAiSummary(null);
+      setAiError(null);
     } catch (err) {
       console.error("❌ Comparison API error:", err);
       console.groupEnd();
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -147,34 +187,95 @@ export default function Compare() {
   }
 
   function removeVehicle(vehicle) {
-    setSelectedVehicles(prev =>
-      prev.filter(v =>
-        !(v.brand === vehicle.brand &&
-          v.model === vehicle.model &&
-          v.year === vehicle.year)
-      )
+    const updated = selectedVehicles.filter(
+      v => !(v.brand === vehicle.brand && v.model === vehicle.model && v.year === vehicle.year)
     );
-    setSelectedData(prev =>
-      prev.filter(v =>
-        !(v.brand === vehicle.brand &&
-          v.model === vehicle.model &&
-          v.year === vehicle.year)
-      )
-    );
+    setSelectedVehicles(updated);
+    calculateComparison(updated);
+  }
+
+  // ── PARALLEL: Gemini AI + winner vehicle detail (image + specs) ──
+  async function fetchAiSummary(vehiclesWithData) {
+    setAiLoading(true);
+    setAiSummary(null);
+    setAiError(null);
+
+    // 1. Find winner client-side — lowest total_for_distance_kg
+    const winner = vehiclesWithData.reduce((best, v) => {
+      const total = v.lifecycle?.total_for_distance_kg ?? Infinity;
+      return total < (best.lifecycle?.total_for_distance_kg ?? Infinity) ? v : best;
+    }, vehiclesWithData[0]);
+
+    console.log("🏆 Client-side winner:", `${winner.brand} ${winner.model} ${winner.year}`);
+
+    try {
+      // 2. Fire Gemini analysis + winner DB lookup in parallel
+      const [aiRes, winnerRes] = await Promise.all([
+
+        fetch(`${API}/ai-summary`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            vehicles: vehiclesWithData.map(v => ({
+              brand: v.brand,
+              model: v.model,
+              year: v.year,
+              vehicle_type: v.vehicle_type,
+              lifecycle: v.lifecycle
+            })),
+            distance_km: distanceKm
+          })
+        }),
+
+        fetch(`${API}/winner-detail`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            brand: winner.brand,
+            model: winner.model,
+            year: winner.year
+          })
+        })
+
+      ]);
+
+      const [aiData, winnerData] = await Promise.all([aiRes.json(), winnerRes.json()]);
+
+      if (aiData.error) {
+        setAiError(aiData.error);
+        return;
+      }
+
+      console.log("🤖 Gemini response:", aiData);
+      console.log("🚗 Winner detail:", winnerData);
+
+      // 3. Merge: winner image from DB overrides anything Gemini returned
+      setAiSummary({
+        ...aiData,
+        winner_image_url: winnerData.image_url ?? aiData.winner_image_url ?? null,
+        winner_specs:     winnerData.specs     ?? null,
+        winner_stats:     winner.lifecycle     ?? null,
+      });
+
+    } catch (err) {
+      console.error("AI summary error:", err);
+      setAiError("Failed to load AI analysis. Please try again.");
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   const brands = [...new Set(vehicles.map(v => v.brand))].sort();
   const models = [...new Set(vehicles.map(v => v.model))].sort();
   const years = [...new Set(vehicles.map(v => v.year))].sort((a, b) => b - a);
 
-  // ── FIX 1: distanceKm is now used to scale all chart values ──
   const barData = {
     labels: selectedData.map(v => `${v.brand} ${v.model}`),
     datasets: [
       {
-        label: `Total Lifecycle Emissions (g CO₂ over ${distanceKm} km)`,
+        label: `Total CO₂ over ${distanceKm.toLocaleString()} km (kg)`,
         data: selectedData.map(v =>
-          v.lifecycle ? Math.round(v.lifecycle.total_g_per_km * distanceKm) : 0
+          v.lifecycle ? v.lifecycle.total_for_distance_kg : 0
         ),
         backgroundColor: "rgba(0,200,83,0.6)",
         borderColor: "rgba(0,200,83,1)",
@@ -187,23 +288,22 @@ export default function Compare() {
     labels: selectedData.map(v => `${v.brand} ${v.model}`),
     datasets: [
       {
-        label: "Manufacturing (g CO₂)",
+        label: "Manufacturing kg CO₂ (fixed)",
         data: selectedData.map(v =>
-          v.lifecycle ? Math.round(v.lifecycle.manufacturing_g_per_km * distanceKm) : 0
+          v.lifecycle ? v.lifecycle.manufacturing_total_kg : 0
         ),
         backgroundColor: "#00C853"
       },
       {
-        label: "Operational (g CO₂)",
+        label: `Operational kg CO₂ (${distanceKm.toLocaleString()} km)`,
         data: selectedData.map(v =>
-          v.lifecycle ? Math.round(v.lifecycle.operational_g_per_km * distanceKm) : 0
+          v.lifecycle ? v.lifecycle.operational_total_kg : 0
         ),
         backgroundColor: "#69F0AE"
       }
     ]
   };
 
-  // ── FIX 2: Shared chart options with explicit height via the wrapper div ──
   const barOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -211,14 +311,14 @@ export default function Compare() {
       legend: { position: "top" },
       tooltip: {
         callbacks: {
-          label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()} g CO₂`
+          label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString(undefined, {maximumFractionDigits: 1})} kg CO₂`
         }
       }
     },
     scales: {
       y: {
         beginAtZero: true,
-        title: { display: true, text: "g CO₂" }
+        title: { display: true, text: "kg CO₂" }
       }
     }
   };
@@ -230,7 +330,7 @@ export default function Compare() {
       legend: { position: "top" },
       tooltip: {
         callbacks: {
-          label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()} g CO₂`
+          label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString(undefined, {maximumFractionDigits: 1})} kg CO₂`
         }
       }
     },
@@ -239,7 +339,7 @@ export default function Compare() {
       y: {
         stacked: true,
         beginAtZero: true,
-        title: { display: true, text: "g CO₂" }
+        title: { display: true, text: "kg CO₂" }   // ← was "g CO₂", now fixed
       }
     }
   };
@@ -251,11 +351,59 @@ export default function Compare() {
       legend: { position: "bottom" },
       tooltip: {
         callbacks: {
-          label: ctx => `${ctx.label}: ${ctx.parsed.toLocaleString()} g CO₂`
+          label: ctx => `${ctx.label}: ${ctx.parsed.toLocaleString(undefined, {maximumFractionDigits: 1})} kg CO₂`
         }
       }
     }
   };
+
+
+  // ── SKELETON COMPONENTS ──────────────────────────────────────────────────
+
+  function SkeletonVehicleItem() {
+    return (
+      <div className="vehicle-item skeleton-vehicle-item">
+        <div className="skeleton skeleton-vehicle-title" />
+        <div className="skeleton skeleton-vehicle-badge" />
+        <div className="skeleton skeleton-vehicle-year" />
+      </div>
+    );
+  }
+
+  function SkeletonCard() {
+    return (
+      <div className="card comparison-card skeleton-card">
+        <div className="skeleton skeleton-title" />
+        <div className="skeleton skeleton-badge" />
+        <div className="mt-md">
+          {[1,2,3,4].map(i => (
+            <div key={i} className="emission-value">
+              <div className="skeleton skeleton-label" />
+              <div className="skeleton skeleton-value" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  function SkeletonChart({ height = 300 }) {
+    return (
+      <div className="chart-container">
+        <div className="skeleton skeleton-chart-title" />
+        <div className="skeleton skeleton-chart" style={{ height }} />
+      </div>
+    );
+  }
+
+  function SkeletonDoughnut() {
+    return (
+      <div className="chart-container">
+        <div className="skeleton skeleton-chart-title" />
+        <div className="skeleton skeleton-donut" />
+      </div>
+    );
+  }
 
   return (
     <div className="container">
@@ -266,18 +414,35 @@ export default function Compare() {
 
         <h3 className="mb-md">Select Vehicles (Max 3)</h3>
 
-        {/* SEARCH BOX */}
-        <input
-          type="text"
-          placeholder="Search vehicle (Tesla, Prius...)"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            searchVehicles(e.target.value);
-          }}
-          className="filter-select"
-          style={{ marginBottom: "10px" }}
-        />
+        {/* GOOGLE-STYLE SEARCH BOX */}
+        <div className="search-bar-wrapper">
+          <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search brand or model…"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              searchVehicles(e.target.value);
+            }}
+            className="search-bar-input"
+          />
+          {search && (
+            <button
+              className="search-clear-btn"
+              onClick={() => { setSearch(""); loadVehicles(); }}
+              aria-label="Clear search"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
+        </div>
 
         <div className="filters">
 
@@ -329,48 +494,98 @@ export default function Compare() {
               <option value="UK">United Kingdom</option>
               <option value="CN">China</option>
               <option value="JP">Japan</option>
+              <option value="IN">India</option>
             </select>
           </div>
 
-          {/* ── FIX 3: Distance input moved inside return, now correctly rendered ── */}
-          <div className="filter-group">
-            <label>Distance Travelled (km)</label>
-            <input
-              type="number"
-              className="filter-select"
-              value={distanceKm}
-              onChange={(e) => setDistanceKm(Number(e.target.value))}
-              min="1"
-              step="100"
-            />
+          <div className="filter-group distance-filter-group">
+            <div className="distance-label-row">
+              <label>Distance</label>
+              <div className="distance-input-wrapper">
+                <input
+                  type="number"
+                  className="distance-number-input"
+                  value={distanceKm}
+                  onChange={(e) => {
+                    const val = Math.min(300000, Math.max(100, Number(e.target.value) || 100));
+                    setDistanceKm(val);
+                    if (distanceDebounceRef.current) clearTimeout(distanceDebounceRef.current);
+                    distanceDebounceRef.current = setTimeout(() => {
+                      if (selectedVehicles.length > 0) calculateComparison(selectedVehicles, val);
+                    }, 400);
+                  }}
+                  min="100"
+                  max="300000"
+                  step="100"
+                />
+                <span className="distance-unit">km</span>
+              </div>
+            </div>
+            <div className="slider-track-wrapper">
+              <input
+                type="range"
+                className="distance-slider"
+                value={distanceKm}
+                onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setDistanceKm(val);
+                  if (distanceDebounceRef.current) clearTimeout(distanceDebounceRef.current);
+                  distanceDebounceRef.current = setTimeout(() => {
+                    if (selectedVehicles.length > 0) calculateComparison(selectedVehicles, val);
+                  }, 400);
+                }}
+                min="100"
+                max="300000"
+                step="100"
+              />
+              <div
+                className="slider-fill"
+                style={{ width: `${(distanceKm / 300000) * 100}%` }}
+              />
+            </div>
+            <div className="slider-ticks">
+              <span>100 km</span>
+              <span>150k km</span>
+              <span>300k km</span>
+            </div>
           </div>
 
         </div>
 
         <div className="vehicle-list mt-md">
-          {filteredVehicles.map((v, i) => {
-            const selected = selectedVehicles.find(
-              s => s.brand === v.brand &&
-                s.model === v.model &&
-                s.year === v.year
-            );
-            return (
-              <div
-                key={`${v.brand}-${v.model}-${v.year}-${i}`}
-                className={`vehicle-item ${selected ? "selected" : ""}`}
-                onClick={() => toggleVehicle(v)}
-              >
-                <h5>{v.brand} {v.model}</h5>
-                <p>
-                  <span className={`badge badge-${v.vehicle_type?.toLowerCase()}`}>
-                    {v.vehicle_type}
-                  </span>
-                </p>
-                <p>{v.year}</p>
-              </div>
-            );
-          })}
+          {vehiclesLoading
+            ? Array.from({ length: 12 }).map((_, i) => <SkeletonVehicleItem key={i} />)
+            : filteredVehicles.map((v, i) => {
+                const selected = selectedVehicles.find(
+                  s => s.brand === v.brand &&
+                    s.model === v.model &&
+                    s.year === v.year
+                );
+                return (
+                  <div
+                    key={`${v.brand}-${v.model}-${v.year}-${i}`}
+                    className={`vehicle-item ${selected ? "selected" : ""}`}
+                    onClick={() => toggleVehicle(v)}
+                  >
+                    <h5>{v.brand} {v.model}</h5>
+                    <p>
+                      <span className={`badge badge-${v.vehicle_type?.toLowerCase()}`}>
+                        {v.vehicle_type}
+                      </span>
+                    </p>
+                    <p>{v.year}</p>
+                  </div>
+                );
+              })
+          }
         </div>
+
+        {vehiclesLoadingMore && (
+          <div className="vehicles-loading-more">
+            <div className="vehicles-loading-bar" />
+            <span>Loading more vehicles…</span>
+          </div>
+        )}
 
       </section>
 
@@ -381,106 +596,312 @@ export default function Compare() {
         </div>
 
         <div className="grid grid-3">
-          {selectedData.map((v, i) => {
-            const lc = v.lifecycle;
+          {loading
+            ? selectedVehicles.map((_, i) => <SkeletonCard key={i} />)
+            : selectedData.map((v, i) => {
+                const lc = v.lifecycle;
 
-            if (!lc) {
-              return (
-                <div key={i} className="card comparison-card">
-                  <button className="remove-btn" onClick={() => removeVehicle(v)}>×</button>
-                  <h4>{v.brand} {v.model}</h4>
-                  <p style={{ color: "var(--color-text-secondary)", marginTop: "1rem" }}>
-                    ⚠️ Emissions data unavailable for this vehicle.
-                  </p>
-                </div>
-              );
-            }
+                if (!lc) {
+                  return (
+                    <div key={i} className="card comparison-card">
+                      <button className="remove-btn" onClick={() => removeVehicle(v)}>×</button>
+                      <h4>{v.brand} {v.model}</h4>
+                      <p style={{ color: "#FF5252", marginTop: "1rem", fontSize: "0.875rem" }}>
+                        ⚠️ {v.lifecycleError || "Emissions data unavailable for this vehicle."}
+                      </p>
+                    </div>
+                  );
+                }
 
-            return (
-              <div key={i} className="card comparison-card">
-
-                <button className="remove-btn" onClick={() => removeVehicle(v)}>×</button>
-
-                <h4>{v.brand} {v.model}</h4>
-
-                <div className="mt-md">
-                  <div className="emission-value">
-                    <span className="emission-label">Total (g/km)</span>
-                    <span className="emission-number">{lc.total_g_per_km}</span>
+                return (
+                  <div key={i} className="card comparison-card">
+                    <button className="remove-btn" onClick={() => removeVehicle(v)}>×</button>
+                    <h4>{v.brand} {v.model}</h4>
+                    <div className="mt-md">
+                      <div className="emission-value">
+                        <span className="emission-label">Operational ({(lc.distance_km ?? distanceKm).toLocaleString()} km)</span>
+                        <span className="emission-number">
+                          {(lc.operational_total_kg).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg CO₂
+                        </span>
+                      </div>
+                      <div className="emission-value">
+                        <span className="emission-label">Manufacturing (lifetime fixed)</span>
+                        <span className="emission-number">
+                          {lc.manufacturing_total_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg CO₂
+                        </span>
+                      </div>
+                      <div className="emission-value emission-value--total">
+                        <span className="emission-label">Total over {(lc.distance_km ?? distanceKm).toLocaleString()} km</span>
+                        <span className="emission-number emission-number--total">
+                          {lc.total_for_distance_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg CO₂
+                        </span>
+                      </div>
+                      <div className="emission-value">
+                        <span className="emission-label">Rate</span>
+                        <span className="emission-number" style={{ fontSize: "0.8rem", opacity: 0.7 }}>
+                          {lc.total_g_per_km} g/km
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="emission-value">
-                    <span className="emission-label">Manufacturing (g/km)</span>
-                    <span className="emission-number">{lc.manufacturing_g_per_km}</span>
-                  </div>
-                  <div className="emission-value">
-                    <span className="emission-label">Operational (g/km)</span>
-                    <span className="emission-number">{lc.operational_g_per_km}</span>
-                  </div>
-                  <div className="emission-value">
-                    <span className="emission-label">Total over {distanceKm} km</span>
-                    <span className="emission-number">
-                      {Math.round(lc.total_g_per_km * distanceKm).toLocaleString()} g
-                    </span>
-                  </div>
-                </div>
-
-              </div>
-            );
-          })}
+                );
+              })
+          }
         </div>
 
       </section>
 
-      {selectedData.length > 0 && (
+      {(loading || selectedData.length > 0) && (
 
         <section className="charts-section">
 
-          {/* ── FIX 4: Explicit height wrapper so maintainAspectRatio:false works ── */}
-          <div className="chart-container">
-            <h3>Lifecycle Comparison (total g CO₂ over {distanceKm} km)</h3>
-            <div style={{ position: "relative", height: "300px" }}>
-              <Bar data={barData} options={barOptions} />
-            </div>
-          </div>
-
-          <div className="chart-container">
-            <h3>Emissions Breakdown (total g CO₂ over {distanceKm} km)</h3>
-            <div style={{ position: "relative", height: "300px" }}>
-              <Bar data={stackedData} options={stackedOptions} />
-            </div>
-          </div>
-
-          <div className="donut-charts">
-            {selectedData.map((v, i) => {
-              const lc = v.lifecycle;
-              if (!lc) return null;
-              return (
-                <div className="chart-container" key={i}>
-                  <h3>{v.brand} {v.model}</h3>
-                  <div style={{ position: "relative", height: "280px" }}>
-                    <Doughnut
-                      data={{
-                        labels: ["Manufacturing", "Operational"],
-                        datasets: [{
-                          data: [
-                            Math.round(lc.manufacturing_g_per_km * distanceKm),
-                            Math.round(lc.operational_g_per_km * distanceKm)
-                          ],
-                          backgroundColor: ["#00C853", "#69F0AE"],
-                          borderColor: ["#009624", "#2bbd7e"],
-                          borderWidth: 1
-                        }]
-                      }}
-                      options={doughnutOptions}
-                    />
-                  </div>
+          {loading ? (
+            <>
+              <SkeletonChart height={300} />
+              <SkeletonChart height={300} />
+              <div className="donut-charts">
+                {selectedVehicles.map((_, i) => <SkeletonDoughnut key={i} />)}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="chart-container">
+                <h3>Total Lifecycle Emissions over {distanceKm.toLocaleString()} km</h3>
+                <div style={{ position: "relative", height: "300px" }}>
+                  <Bar data={barData} options={barOptions} />
                 </div>
-              );
-            })}
-          </div>
+              </div>
+
+              <div className="chart-container">
+                <h3>Emissions Breakdown over {distanceKm.toLocaleString()} km</h3>
+                <div style={{ position: "relative", height: "300px" }}>
+                  <Bar data={stackedData} options={stackedOptions} />
+                </div>
+              </div>
+
+              <div className="donut-charts">
+                {selectedData.map((v, i) => {
+                  const lc = v.lifecycle;
+                  if (!lc) return null;
+                  return (
+                    <div className="chart-container" key={i}>
+                      <h3>{v.brand} {v.model}</h3>
+                      <div style={{ position: "relative", height: "280px" }}>
+                        <Doughnut
+                          data={{
+                            labels: ["Manufacturing (fixed)", `Operational (${distanceKm.toLocaleString()} km)`],
+                            datasets: [{
+                              data: [
+                                lc.manufacturing_total_kg,
+                                lc.operational_total_kg
+                              ],
+                              backgroundColor: ["#00C853", "#69F0AE"],
+                              borderColor: ["#009624", "#2bbd7e"],
+                              borderWidth: 1
+                            }]
+                          }}
+                          options={doughnutOptions}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
         </section>
 
+      )}
+
+      {/* ── AI SUMMARY SECTION ── */}
+      {selectedData.filter(v => v.lifecycle && !v.lifecycleError).length >= 1 && (
+        <div className="ai-generate-wrap">
+
+          {!aiSummary && !aiLoading && (
+            <button
+              className="ai-generate-btn"
+              onClick={() => fetchAiSummary(selectedData.filter(v => v.lifecycle && !v.lifecycleError))}
+            >
+              <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+                <path d="M12 2L9.5 9.5L2 12L9.5 14.5L12 22L14.5 14.5L22 12L14.5 9.5L12 2Z" fill="currentColor"/>
+              </svg>
+              Analyse with Gemini AI
+            </button>
+          )}
+
+          {/* Error state */}
+          {aiError && !aiLoading && (
+            <div className="ai-error-wrap">
+              <p className="ai-error-msg">⚠️ {aiError}</p>
+              <button
+                className="ai-generate-btn"
+                onClick={() => fetchAiSummary(selectedData.filter(v => v.lifecycle && !v.lifecycleError))}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {(aiLoading || aiSummary) && (
+            <section className="ai-summary-section">
+              <div className="ai-summary-header">
+                <div className="ai-badge">
+                  <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
+                    <path d="M12 2L9.5 9.5L2 12L9.5 14.5L12 22L14.5 14.5L22 12L14.5 9.5L12 2Z"
+                      fill="currentColor"/>
+                  </svg>
+                  Gemini AI Analysis
+                </div>
+                <h2>Which Vehicle Should You Choose?</h2>
+              </div>
+
+              {aiLoading ? (
+                <div className="ai-summary-skeleton">
+                  <div className="ai-winner-skeleton">
+                    <div className="skeleton ai-img-skeleton" />
+                    <div className="ai-winner-text-skeleton">
+                      <div className="skeleton" style={{height:22, width:"60%", marginBottom:12}} />
+                      <div className="skeleton" style={{height:14, width:"40%", marginBottom:20}} />
+                      <div className="skeleton" style={{height:12, width:"100%", marginBottom:8}} />
+                      <div className="skeleton" style={{height:12, width:"90%", marginBottom:8}} />
+                      <div className="skeleton" style={{height:12, width:"75%"}} />
+                    </div>
+                  </div>
+                </div>
+              ) : aiSummary && (
+                <div className="ai-summary-content">
+
+                  {/* WINNER CARD */}
+                  <div className="ai-winner-card">
+                    {aiSummary.winner_image_url && (
+                      <div className="ai-winner-img-wrap">
+                        <img
+                          src={aiSummary.winner_image_url}
+                          alt={`${aiSummary.winner} image`}
+                          className="ai-winner-img"
+                          onError={e => { e.target.style.display = "none"; }}
+                        />
+                      </div>
+                    )}
+                    <div className="ai-winner-info">
+                      <div className="ai-winner-label">🏆 Best Pick</div>
+                      <h3 className="ai-winner-name">{aiSummary.winner}</h3>
+                      <span className={`badge badge-${aiSummary.winner_type?.toLowerCase()}`}>
+                        {aiSummary.winner_type}
+                      </span>
+                      <p className="ai-winner-verdict">{aiSummary.verdict}</p>
+
+                      {/* Winner stats from lifecycle data (parallel fetch) */}
+                      {aiSummary.winner_stats && (
+                        <div className="ai-winner-stats">
+                          <div className="ai-winner-stat">
+                            <span>Operational</span>
+                            <strong>
+                              {aiSummary.winner_stats.operational_total_kg?.toLocaleString(
+                                undefined, { maximumFractionDigits: 0 }
+                              )} kg
+                            </strong>
+                          </div>
+                          <div className="ai-winner-stat">
+                            <span>Manufacturing</span>
+                            <strong>
+                              {aiSummary.winner_stats.manufacturing_total_kg?.toLocaleString(
+                                undefined, { maximumFractionDigits: 0 }
+                              )} kg
+                            </strong>
+                          </div>
+                          <div className="ai-winner-stat">
+                            <span>Rate</span>
+                            <strong>{aiSummary.winner_stats.total_g_per_km} g/km</strong>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Winner vehicle specs from afdc_vehicles (parallel fetch) */}
+                      {aiSummary.winner_specs && (
+                        <div className="ai-winner-specs">
+                          {aiSummary.winner_specs.range_km && (
+                            <div className="ai-winner-spec">
+                              <span>Range</span>
+                              <strong>{aiSummary.winner_specs.range_km} km</strong>
+                            </div>
+                          )}
+                          {aiSummary.winner_specs.fuel_economy && (
+                            <div className="ai-winner-spec">
+                              <span>Efficiency</span>
+                              <strong>{aiSummary.winner_specs.fuel_economy}</strong>
+                            </div>
+                          )}
+                          {aiSummary.winner_specs.manufacturer_url && (
+                            <a
+                              href={aiSummary.winner_specs.manufacturer_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ai-winner-mfr-link"
+                            >
+                              View on manufacturer site →
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* REASONS */}
+                  <div className="ai-reasons">
+                    <h4>Why this vehicle wins</h4>
+                    <ul className="ai-reasons-list">
+                      {aiSummary.reasons?.map((r, i) => (
+                        <li key={i}>
+                          <span className="ai-reason-dot" />
+                          {r}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* VEHICLE BREAKDOWN */}
+                  <div className="ai-breakdown">
+                    <h4>All vehicles compared</h4>
+                    <div className="ai-breakdown-grid">
+                      {aiSummary.breakdown?.map((v, i) => (
+                        <div key={i} className={`ai-breakdown-card ${v.is_winner ? "ai-breakdown-winner" : ""}`}>
+                          {v.image_url && (
+                            <img
+                              src={v.image_url}
+                              alt={v.name}
+                              className="ai-breakdown-img"
+                              onError={e => { e.target.style.display = "none"; }}
+                            />
+                          )}
+                          <div className="ai-breakdown-name">{v.name}</div>
+                          <div className="ai-breakdown-type">
+                            <span className={`badge badge-${v.type?.toLowerCase()}`}>{v.type}</span>
+                          </div>
+                          <div className="ai-breakdown-stat">
+                            <span>Total CO₂</span>
+                            <strong>{v.total_kg?.toLocaleString(undefined, {maximumFractionDigits:0})} kg</strong>
+                          </div>
+                          <div className="ai-breakdown-stat">
+                            <span>Rate</span>
+                            <strong>{v.rate_g_per_km} g/km</strong>
+                          </div>
+                          <p className="ai-breakdown-note">{v.note}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="ai-disclaimer">
+                    Analysis generated by Gemini AI based on lifecycle emissions data.
+                    Real-world results may vary based on driving patterns and grid changes.
+                  </p>
+                </div>
+              )}
+            </section>
+          )}
+        </div>
       )}
 
     </div>
