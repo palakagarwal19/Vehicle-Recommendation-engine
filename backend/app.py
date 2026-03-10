@@ -285,17 +285,15 @@ def compare_multiple():
 
 
 # ==================================================
-# RECOMMENDATION ENGINE
-# ==================================================
-
 @app.route("/recommend", methods=["POST"])
 def recommend():
+    data = request.json  # ← must be BEFORE any data.get() calls
 
-    data = request.json
+    print(f"DEBUG recommend: daily_km={data.get('daily_km')}, years={data.get('years')}, filters={data.get('filters')}, country={data.get('country')}")
 
     results = recommend_vehicle(
         daily_km=data.get("daily_km"),
-        years=data.get("years"),
+        years=data.get("years", 10),
         body_type=data.get("filters", {}).get("bodyType"),
         vehicle_type=data.get("filters", {}).get("vehicle_type"),
         country=data.get("country", "US"),
@@ -303,8 +301,6 @@ def recommend():
     )
 
     return jsonify(results)
-
-
 # ==================================================
 # BREAK EVEN ANALYSIS
 # ==================================================
