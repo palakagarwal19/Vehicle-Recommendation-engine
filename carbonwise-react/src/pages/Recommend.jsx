@@ -3,11 +3,6 @@ import apiClient from '../services/api';
 
 const API = "http://localhost:5000";
 
-// ─── Leaflet loaded via CDN in index.html ───────────────────────────────────
-// Add to public/index.html <head>:
-//   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-//   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 const POWERTRAIN_OPTIONS = [
   { value: '',     label: 'Any powertrain' },
   { value: 'BEV',  label: '⚡ Electric (BEV)' },
@@ -132,7 +127,6 @@ function RouteMap({ onDistanceChange, distanceMode }) {
       pointsRef.current = updated;
       setPoints([...updated]);
 
-      // Add marker
       const marker = L.circleMarker(newPoint, {
         radius: 6,
         fillColor: '#00ff88',
@@ -143,10 +137,7 @@ function RouteMap({ onDistanceChange, distanceMode }) {
       }).addTo(map);
       markersRef.current.push(marker);
 
-      // Draw/update polyline
-      if (polylineRef.current) {
-        polylineRef.current.remove();
-      }
+      if (polylineRef.current) polylineRef.current.remove();
       if (updated.length > 1) {
         polylineRef.current = L.polyline(updated, {
           color: '#00ff88',
@@ -155,7 +146,6 @@ function RouteMap({ onDistanceChange, distanceMode }) {
           dashArray: '6 4',
         }).addTo(map);
 
-        // Calculate total distance
         let km = 0;
         for (let i = 1; i < updated.length; i++) {
           const a = L.latLng(updated[i - 1]);
@@ -238,7 +228,7 @@ function RouteMap({ onDistanceChange, distanceMode }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function Recommend() {
-  const [distanceMode, setDistanceMode] = useState('daily'); // 'daily' | 'monthly' | 'map'
+  const [distanceMode, setDistanceMode] = useState('daily');
   const [distance, setDistance] = useState(40);
   const [mapDistanceKm, setMapDistanceKm] = useState(0);
   const [powertrain, setPowertrain] = useState('');
@@ -248,11 +238,8 @@ export default function Recommend() {
   const [error, setError] = useState(null);
   const [scanned, setScanned] = useState(false);
 
-  // Compute daily_km to send to API
   const getDailyKm = () => {
-    if (distanceMode === 'map') {
-      return mapDistanceKm > 0 ? mapDistanceKm / 365 : 40;
-    }
+    if (distanceMode === 'map') return mapDistanceKm > 0 ? mapDistanceKm / 365 : 40;
     if (distanceMode === 'monthly') return distance / 30;
     return distance;
   };
@@ -289,7 +276,6 @@ export default function Recommend() {
   const annualKm = getAnnualKm();
   const lifetime_km = annualKm * 10;
 
-  // Number formatter
   const fmt = (val, decimals = 0) => {
     const n = Number(val);
     if (val === null || val === undefined || isNaN(n)) return '0';
@@ -535,7 +521,6 @@ export default function Recommend() {
           100% { width: 0; left: 100%; }
         }
 
-        /* Results */
         .results-area {
           display: flex;
           flex-direction: column;
@@ -729,16 +714,20 @@ export default function Recommend() {
           letter-spacing: 0.5px;
         }
 
-        .personal-kg {
-          font-size: 11px;
-          color: #555;
+        /* ── Recycling badge ── */
+        .recycling-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 3px 10px;
+          background: rgba(178,223,219,0.08);
+          border: 1px solid rgba(178,223,219,0.22);
+          border-radius: 20px;
+          font-size: 10px;
+          color: #B2DFDB;
           font-family: 'JetBrains Mono', monospace;
-          margin-top: 6px;
-        }
-
-        .personal-kg span {
-          color: #00ff88;
           font-weight: 600;
+          margin-top: 6px;
         }
       `}</style>
 
@@ -760,7 +749,6 @@ export default function Recommend() {
             <div className="rec-panel">
               <div className="scan-lines" />
 
-              {/* Distance mode tabs */}
               <div className="field-wrap">
                 <span className="field-label">DISTANCE INPUT MODE</span>
                 <div className="mode-tabs">
@@ -780,7 +768,6 @@ export default function Recommend() {
                 </div>
               </div>
 
-              {/* Distance input */}
               {distanceMode !== 'map' ? (
                 <div className="field-wrap">
                   <span className="field-label">
@@ -812,10 +799,7 @@ export default function Recommend() {
               ) : (
                 <div className="field-wrap">
                   <span className="field-label">DRAW YOUR ROUTE</span>
-                  <RouteMap
-                    onDistanceChange={setMapDistanceKm}
-                    distanceMode={distanceMode}
-                  />
+                  <RouteMap onDistanceChange={setMapDistanceKm} distanceMode={distanceMode} />
                   {mapDistanceKm > 0 ? (
                     <div style={{ marginTop: 10 }}>
                       <div className="dist-display" style={{ marginBottom: 2 }}>
@@ -832,43 +816,27 @@ export default function Recommend() {
                 </div>
               )}
 
-              {/* Powertrain filter */}
               <div className="field-wrap">
                 <span className="field-label">POWERTRAIN PREFERENCE</span>
                 <div style={{ position: 'relative' }}>
-                  <select
-                    className="rec-select"
-                    value={powertrain}
-                    onChange={e => setPowertrain(e.target.value)}
-                  >
+                  <select className="rec-select" value={powertrain} onChange={e => setPowertrain(e.target.value)}>
                     {POWERTRAIN_OPTIONS.map(o => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
-                  <span style={{
-                    position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                    color: '#444', pointerEvents: 'none', fontSize: 12,
-                  }}>▾</span>
+                  <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#444', pointerEvents: 'none', fontSize: 12 }}>▾</span>
                 </div>
               </div>
 
-              {/* Country */}
               <div className="field-wrap">
                 <span className="field-label">GRID COUNTRY</span>
                 <div style={{ position: 'relative' }}>
-                  <select
-                    className="rec-select"
-                    value={country}
-                    onChange={e => setCountry(e.target.value)}
-                  >
+                  <select className="rec-select" value={country} onChange={e => setCountry(e.target.value)}>
                     {COUNTRIES.map(c => (
                       <option key={c.value} value={c.value}>{c.label}</option>
                     ))}
                   </select>
-                  <span style={{
-                    position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                    color: '#444', pointerEvents: 'none', fontSize: 12,
-                  }}>▾</span>
+                  <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#444', pointerEvents: 'none', fontSize: 12 }}>▾</span>
                 </div>
               </div>
 
@@ -887,7 +855,6 @@ export default function Recommend() {
               )}
             </div>
 
-            {/* Info box */}
             <div style={{
               marginTop: 14, padding: '14px 18px',
               background: 'rgba(0,255,136,0.03)',
@@ -898,7 +865,7 @@ export default function Recommend() {
                 HOW IT WORKS
               </div>
               <p style={{ fontSize: 11, color: '#444', lineHeight: 1.6, margin: 0, fontFamily: "'JetBrains Mono', monospace" }}>
-                Rankings include full lifecycle CO₂ — manufacturing + operational over 10 years.
+                Rankings include full lifecycle CO₂ — manufacturing + operational + end-of-life recycling over 10 years.
                 Grid intensity varies by country for EVs.
               </p>
             </div>
@@ -916,9 +883,7 @@ export default function Recommend() {
               </div>
             )}
 
-            {error && (
-              <div className="error-box">⚠ {error}</div>
-            )}
+            {error && <div className="error-box">⚠ {error}</div>}
 
             {loading && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -943,10 +908,7 @@ export default function Recommend() {
               <div className="results-area">
                 <div className="results-header">
                   <div className="results-header-dot" />
-                  <span style={{
-                    fontSize: 10, color: '#444', letterSpacing: 2,
-                    fontFamily: "'JetBrains Mono', monospace",
-                  }}>
+                  <span style={{ fontSize: 10, color: '#444', letterSpacing: 2, fontFamily: "'JetBrains Mono', monospace" }}>
                     {recommendations.length} VEHICLES RANKED · {Math.round(annualKm).toLocaleString()} KM/YR
                   </span>
                 </div>
@@ -955,7 +917,8 @@ export default function Recommend() {
                   const score = calcScore(rec.total_g_per_km);
                   const rankColor = RANK_COLORS[idx];
                   const annualCO2   = isFinite(rec.annual_co2_kg) ? Math.round(rec.annual_co2_kg) : 0;
-                  const lifetimeCO2 = isFinite(rec.personalized_total_kg) ? Math.round(rec.personalized_total_kg) : 0;
+                  const recyclingKg = rec.recycling_kg ?? 0;
+                  const hasRecycling = recyclingKg > 0;
 
                   return (
                     <div
@@ -997,14 +960,14 @@ export default function Recommend() {
                         </div>
                       </div>
 
-                      {/* Operational + Manufacturing totals over selected distance */}
-                      <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+                      {/* ── Operational + Manufacturing + Recycling blocks ── */}
+                      <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
                         <div style={{
-                          flex: 1, background: 'rgba(255,255,255,0.04)',
+                          flex: '1 1 120px', background: 'rgba(255,255,255,0.04)',
                           borderRadius: 8, padding: '10px 14px',
                           borderLeft: `3px solid ${rankColor}`,
                         }}>
-                          <div style={{ fontSize: 18, fontWeight: 700, color: rankColor }}>
+                          <div style={{ fontSize: 17, fontWeight: 700, color: rankColor }}>
                             {fmt(rec.operational_total_kg)} kg
                           </div>
                           <div style={{ fontSize: 9, color: '#555', letterSpacing: 2, marginTop: 2 }}>
@@ -1012,22 +975,37 @@ export default function Recommend() {
                           </div>
                         </div>
                         <div style={{
-                          flex: 1, background: 'rgba(255,255,255,0.04)',
+                          flex: '1 1 120px', background: 'rgba(255,255,255,0.04)',
                           borderRadius: 8, padding: '10px 14px',
                           borderLeft: '3px solid rgba(255,255,255,0.2)',
                         }}>
-                          <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>
+                          <div style={{ fontSize: 17, fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>
                             {fmt(rec.manufacturing_total_kg)} kg
                           </div>
                           <div style={{ fontSize: 9, color: '#555', letterSpacing: 2, marginTop: 2 }}>
                             MANUFACTURING TOTAL
                           </div>
                         </div>
+                        {/* ── NEW: Recycling block — only for EVs/PHEVs ── */}
+                        {hasRecycling && (
+                          <div style={{
+                            flex: '1 1 120px', background: 'rgba(178,223,219,0.05)',
+                            borderRadius: 8, padding: '10px 14px',
+                            borderLeft: '3px solid rgba(178,223,219,0.35)',
+                          }}>
+                            <div style={{ fontSize: 17, fontWeight: 700, color: '#B2DFDB' }}>
+                              {fmt(recyclingKg)} kg
+                            </div>
+                            <div style={{ fontSize: 9, color: '#555', letterSpacing: 2, marginTop: 2 }}>
+                              END-OF-LIFE RECYCLING
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div style={{ marginBottom: 12 }}>
                         <StatBar
-                          label={`OPERATIONAL  ${fmt(rec.operational_total_kg)} kg over ${fmt(lifetime_km)} km`}
+                          label={`OPERATIONAL  ${fmt(rec.operational_total_kg)} kg`}
                           value={rec.operational_total_kg}
                           max={Math.max(...recommendations.map(r => r.total_for_distance_kg)) * 1.1}
                           color={rankColor}
@@ -1038,6 +1016,15 @@ export default function Recommend() {
                           max={Math.max(...recommendations.map(r => r.total_for_distance_kg)) * 1.1}
                           color="rgba(255,255,255,0.25)"
                         />
+                        {/* ── NEW: Recycling stat bar ── */}
+                        {hasRecycling && (
+                          <StatBar
+                            label={`END-OF-LIFE RECYCLING  ${fmt(recyclingKg)} kg (one-time)`}
+                            value={recyclingKg}
+                            max={Math.max(...recommendations.map(r => r.total_for_distance_kg)) * 1.1}
+                            color="rgba(178,223,219,0.5)"
+                          />
+                        )}
                       </div>
 
                       {(() => {

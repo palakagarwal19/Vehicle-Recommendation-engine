@@ -1,84 +1,117 @@
 from engine import calculate_lifecycle
 from manufacturing import manufacturing_kg
 
+LIFETIME_KM = 278_600
 
-def break_even_km(ev_vehicle, ice_vehicle, country, year):
+# All powertrain types the engine supports
+VALID_TYPES = {"EV", "BEV", "HEV", "PHEV", "ICE"}
 
-    # Validate EV has required data
-    if ev_vehicle.get("vehicle_type") != "EV":
-        return {"error": "First vehicle must be an EV"}
-    
-    if ice_vehicle.get("vehicle_type") not in ["ICE", "HEV", "PHEV"]:
-        return {"error": "Second vehicle must be ICE, HEV, or PHEV"}
-    
-    # Check if EV has electric consumption data
-    if ev_vehicle.get("electric_wh_per_km") is None:
-        return {"error": "EV vehicle missing electric consumption data"}
+# Types that need grid/country to calculate operational emissions
+GRID_DEPENDENT = {"EV", "BEV", "PHEV"}
 
-    ev_lc = calculate_lifecycle(ev_vehicle, country, year)
-    ice_lc = calculate_lifecycle(ice_vehicle, country, year)
 
-    if "error" in ev_lc:
-        return {"error": f"EV lifecycle calculation failed: {ev_lc['error']}"}
-    
-    if "error" in ice_lc:
-        return {"error": f"ICE lifecycle calculation failed: {ice_lc['error']}"}
+def break_even_km(vehicle_a, vehicle_b, country, year):
+    """
+    Generic break-even between any two powertrains (EV, BEV, HEV, PHEV, ICE).
+    vehicle_a is the 'cleaner' candidate; vehicle_b is the baseline.
+    Direction is determined automatically from operational emissions.
+    """
+    type_a = vehicle_a.get("vehicle_type", "")
+    type_b = vehicle_b.get("vehicle_type", "")
 
-    # Get TOTAL manufacturing emissions (kg CO₂)
+    if type_a not in VALID_TYPES:
+        return {"error": f"Vehicle A has unsupported vehicle_type '{type_a}'"}
+    if type_b not in VALID_TYPES:
+        return {"error": f"Vehicle B has unsupported vehicle_type '{type_b}'"}
+
+    # EVs and PHEVs need electric_wh_per_km
+    if type_a in GRID_DEPENDENT and vehicle_a.get("electric_wh_per_km") is None:
+        return {"error": f"Vehicle A ({vehicle_a.get('model')}) is missing electric_wh_per_km"}
+    if type_b in GRID_DEPENDENT and vehicle_b.get("electric_wh_per_km") is None:
+        return {"error": f"Vehicle B ({vehicle_b.get('model')}) is missing electric_wh_per_km"}
+
+    lc_a = calculate_lifecycle(vehicle_a, country, year)
+    lc_b = calculate_lifecycle(vehicle_b, country, year)
+
+    if "error" in lc_a:
+        return {"error": f"Vehicle A lifecycle failed: {lc_a['error']}"}
+    if "error" in lc_b:
+        return {"error": f"Vehicle B lifecycle failed: {lc_b['error']}"}
+
     try:
-        ev_manuf_total_kg = manufacturing_kg(ev_vehicle)
-        ice_manuf_total_kg = manufacturing_kg(ice_vehicle)
+        manuf_a_kg = manufacturing_kg(vehicle_a)
+        manuf_b_kg = manufacturing_kg(vehicle_b)
     except ValueError as e:
         return {"error": f"Manufacturing calculation failed: {str(e)}"}
 
-    # Operational emissions (g/km)
-    ev_op = ev_lc["operational_g_per_km"]
-    ice_op = ice_lc["operational_g_per_km"]
+    op_a = lc_a["operational_g_per_km"]
+    op_b = lc_b["operational_g_per_km"]
 
-    # Convert total manufacturing to g for consistency
-    ev_manuf_total_g = ev_manuf_total_kg * 1000
-    ice_manuf_total_g = ice_manuf_total_kg * 1000
+    manuf_a_g = manuf_a_kg * 1000
+    manuf_b_g = manuf_b_kg * 1000
 
-    # Break-even calculation:
-    # delta_manuf (g) = difference in total manufacturing emissions
-    # delta_operational (g/km) = difference in operational emissions per km
-    delta_manuf = ev_manuf_total_g - ice_manuf_total_g
-    delta_operational = ice_op - ev_op
+    # delta > 0 means A has higher manufacturing cost (typical for EV vs ICE)
+    # delta_op > 0 means B has higher operational cost (A is cleaner to run)
+    delta_manuf = manuf_a_g - manuf_b_g
+    delta_op    = op_b - op_a
 
     print(f"Break-even calculation:")
-    print(f"  EV: manuf_total={ev_manuf_total_kg:.2f} kg, op={ev_op:.2f} g/km, total={ev_lc['total_g_per_km']:.2f} g/km")
-    print(f"  ICE: manuf_total={ice_manuf_total_kg:.2f} kg, op={ice_op:.2f} g/km, total={ice_lc['total_g_per_km']:.2f} g/km")
-    print(f"  Delta manuf: {delta_manuf:.2f} g (EV - ICE)")
-    print(f"  Delta operational: {delta_operational:.2f} g/km (ICE - EV)")
+    print(f"  A ({type_a}): manuf={manuf_a_kg:.1f} kg, op={op_a:.2f} g/km")
+    print(f"  B ({type_b}): manuf={manuf_b_kg:.1f} kg, op={op_b:.2f} g/km")
+    print(f"  Δ manuf={delta_manuf:.0f} g  Δ op={delta_op:.2f} g/km")
 
-    if delta_operational <= 0:
+    base = {
+        "a_brand":                   vehicle_a.get("brand", ""),
+        "a_model":                   vehicle_a.get("model", ""),
+        "a_year":                    vehicle_a.get("year"),
+        "a_vehicle_type":            type_a,
+        "a_manufacturing_total_kg":  round(manuf_a_kg, 2),
+        "a_manufacturing_g_per_km":  lc_a["manufacturing_g_per_km"],
+        "a_operational_g_per_km":    op_a,
+        "a_total_g_per_km":          lc_a["total_g_per_km"],
+        "b_brand":                   vehicle_b.get("brand", ""),
+        "b_model":                   vehicle_b.get("model", ""),
+        "b_year":                    vehicle_b.get("year"),
+        "b_vehicle_type":            type_b,
+        "b_manufacturing_total_kg":  round(manuf_b_kg, 2),
+        "b_manufacturing_g_per_km":  lc_b["manufacturing_g_per_km"],
+        "b_operational_g_per_km":    op_b,
+        "b_total_g_per_km":          lc_b["total_g_per_km"],
+    }
+
+    # A has no operational advantage over B
+    if delta_op <= 0:
         return {
+            **base,
             "break_even_km": None,
-            "message": "EV does not outperform ICE operationally in this grid",
-            "ev_manufacturing_g_per_km": ev_lc["manufacturing_g_per_km"],
-            "ev_manufacturing_total_kg": ev_manuf_total_kg,
-            "ev_operational_g_per_km": ev_op,
-            "ev_total_g_per_km": ev_lc["total_g_per_km"],
-            "ice_manufacturing_g_per_km": ice_lc["manufacturing_g_per_km"],
-            "ice_manufacturing_total_kg": ice_manuf_total_kg,
-            "ice_operational_g_per_km": ice_op,
-            "ice_total_g_per_km": ice_lc["total_g_per_km"]
+            "operational_advantage_g_per_km": round(delta_op, 2),
+            "manufacturing_difference_g_per_km": round(delta_manuf / LIFETIME_KM, 2),
+            "message": (
+                f"{vehicle_a.get('brand')} {vehicle_a.get('model')} ({type_a}) does not have "
+                f"lower operational emissions than {vehicle_b.get('brand')} {vehicle_b.get('model')} "
+                f"({type_b}) on this grid — no break-even point exists."
+            ),
         }
 
-    # Break-even km = total manufacturing difference / operational difference per km
-    km = delta_manuf / delta_operational
-    print(f"  Break-even: {km:.0f} km")
+    # A has higher manufacturing cost AND lower operational — classic break-even
+    if delta_manuf > 0:
+        km = delta_manuf / delta_op
+        print(f"  Break-even: {km:.0f} km")
+        return {
+            **base,
+            "break_even_km": round(km, 0),
+            "operational_advantage_g_per_km":    round(delta_op, 2),
+            "manufacturing_difference_g_per_km": round(delta_manuf / LIFETIME_KM, 2),
+        }
 
+    # A has LOWER manufacturing AND lower operational — already ahead from km 0
     return {
-        "break_even_km": round(km, 0),
-        "manufacturing_difference_g_per_km": round(delta_manuf / 278600, 2),  # For display purposes
-        "operational_advantage_g_per_km": round(delta_operational, 2),
-        "ev_manufacturing_g_per_km": ev_lc["manufacturing_g_per_km"],
-        "ev_manufacturing_total_kg": ev_manuf_total_kg,
-        "ev_operational_g_per_km": ev_op,
-        "ev_total_g_per_km": ev_lc["total_g_per_km"],
-        "ice_manufacturing_g_per_km": ice_lc["manufacturing_g_per_km"],
-        "ice_manufacturing_total_kg": ice_manuf_total_kg,
-        "ice_operational_g_per_km": ice_op,
-        "ice_total_g_per_km": ice_lc["total_g_per_km"]
+        **base,
+        "break_even_km": 0,
+        "operational_advantage_g_per_km":    round(delta_op, 2),
+        "manufacturing_difference_g_per_km": round(delta_manuf / LIFETIME_KM, 2),
+        "message": (
+            f"{vehicle_a.get('brand')} {vehicle_a.get('model')} ({type_a}) has lower emissions "
+            f"in both manufacturing and operation — it wins from kilometre zero."
+        ),
     }

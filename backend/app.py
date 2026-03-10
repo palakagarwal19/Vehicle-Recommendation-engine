@@ -304,53 +304,61 @@ def recommend():
 # ==================================================
 # BREAK EVEN ANALYSIS
 # ==================================================
+# ==================================================
+# BREAK EVEN ANALYSIS  — fixed route (replace in app.py)
+# ==================================================
+# ==================================================
+# BREAK EVEN ANALYSIS  — updated route (replace in app.py)
+# Now accepts vehicle_a / vehicle_b (any powertrain)
+# ==================================================
 
 @app.route("/break-even", methods=["POST"])
 def break_even():
 
     data = request.json
 
-    ev = data.get("ev")
-    ice = data.get("ice")
+    va      = data.get("vehicle_a")
+    vb      = data.get("vehicle_b")
     country = data.get("country")
-    year = data.get("year")
+    year    = data.get("grid_year") or data.get("year")
+
+    if not va or not vb:
+        return jsonify({"error": "vehicle_a and vehicle_b are required"}), 400
 
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur  = conn.cursor()
 
     cur.execute("""
-        SELECT *
-        FROM vehicles
+        SELECT * FROM vehicles
         WHERE brand=%s AND model=%s AND year=%s
         LIMIT 1
-    """, (ev["brand"], ev["model"], ev["year"]))
-
-    ev_vehicle = cur.fetchone()
+    """, (va["brand"], va["model"], va["year"]))
+    row_a = cur.fetchone()
 
     cur.execute("""
-        SELECT *
-        FROM vehicles
+        SELECT * FROM vehicles
         WHERE brand=%s AND model=%s AND year=%s
         LIMIT 1
-    """, (ice["brand"], ice["model"], ice["year"]))
+    """, (vb["brand"], vb["model"], vb["year"]))
+    row_b = cur.fetchone()
 
-    ice_vehicle = cur.fetchone()
+    if not row_a or not row_b:
+        cur.close()
+        conn.close()
+        missing = []
+        if not row_a: missing.append(f"{va['brand']} {va['model']} {va['year']}")
+        if not row_b: missing.append(f"{vb['brand']} {vb['model']} {vb['year']}")
+        return jsonify({"error": f"Vehicle(s) not found: {', '.join(missing)}"}), 404
 
-    if not ev_vehicle or not ice_vehicle:
-        return jsonify({"error": "Vehicle not found"}), 404
-
-    columns = [desc[0] for desc in cur.description]
-
-    ev_vehicle = dict(zip(columns, ev_vehicle))
-    ice_vehicle = dict(zip(columns, ice_vehicle))
+    columns    = [desc[0] for desc in cur.description]
+    vehicle_a  = dict(zip(columns, row_a))
+    vehicle_b  = dict(zip(columns, row_b))
 
     cur.close()
     conn.close()
 
-    result = break_even_km(ev_vehicle, ice_vehicle, country, year)
-
+    result = break_even_km(vehicle_a, vehicle_b, country, year)
     return jsonify(result)
-
 
 # ==================================================
 # GREENWASHING DETECTION

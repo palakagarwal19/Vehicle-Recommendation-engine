@@ -1,27 +1,14 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import "../styles/compare.css";
 import apiClient from "../services/api";
 
 import {
-  Chart as ChartJS,
-  BarElement,
-  ArcElement,
-  CategoryScale,
-  LinearScale,
-  Tooltip,
-  Legend
+  Chart as ChartJS, BarElement, ArcElement,
+  CategoryScale, LinearScale, Tooltip, Legend
 } from "chart.js";
-
 import { Bar, Doughnut } from "react-chartjs-2";
 
-ChartJS.register(
-  BarElement,
-  ArcElement,
-  CategoryScale,
-  LinearScale,
-  Tooltip,
-  Legend
-);
+ChartJS.register(BarElement, ArcElement, CategoryScale, LinearScale, Tooltip, Legend);
 
 const API = "http://localhost:5000";
 
@@ -30,7 +17,6 @@ export default function Compare() {
   const [vehicles, setVehicles] = useState([]);
   const [selectedVehicles, setSelectedVehicles] = useState([]);
   const [selectedData, setSelectedData] = useState([]);
-
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
   const [year, setYear] = useState("");
@@ -45,143 +31,85 @@ export default function Compare() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState(null);
 
-  useEffect(() => {
-    loadVehicles();
-  }, []);
+  useEffect(() => { loadVehicles(); }, []);
 
   async function loadVehicles() {
     setVehiclesLoading(true);
     setVehicles([]);
-
     const PAGE_SIZE = 200;
-    let page = 1;
-    let totalPages = 1;
-
+    let page = 1, totalPages = 1;
     try {
       while (page <= totalPages) {
         const res  = await fetch(`${API}/vehicles?page=${page}&limit=${PAGE_SIZE}`);
         const json = await res.json();
-
         const batch = Array.isArray(json) ? json : json.vehicles ?? [];
         totalPages  = json.pages ?? 1;
-
         setVehicles(prev => [...prev, ...batch]);
-
-        if (page === 1) {
-          setVehiclesLoading(false);
-          if (totalPages > 1) setVehiclesLoadingMore(true);
-        }
-
+        if (page === 1) { setVehiclesLoading(false); if (totalPages > 1) setVehiclesLoadingMore(true); }
         page++;
       }
     } catch (err) {
       console.error("Failed to load vehicles:", err);
       setVehiclesLoading(false);
-    } finally {
-      setVehiclesLoadingMore(false);
-    }
+    } finally { setVehiclesLoadingMore(false); }
   }
 
   async function searchVehicles(query) {
-    if (query.length < 2) {
-      loadVehicles();
-      return;
-    }
+    if (query.length < 2) { loadVehicles(); return; }
     setVehiclesLoading(true);
-    const res = await fetch(`${API}/vehicle-search?q=${query}`);
+    const res  = await fetch(`${API}/vehicle-search?q=${query}`);
     const data = await res.json();
     setVehicles(data);
     setVehiclesLoading(false);
   }
 
-  const filteredVehicles = useMemo(() => {
-    return vehicles.filter(v =>
-      (!brand || v.brand === brand) &&
-      (!model || v.model === model) &&
-      (!year || v.year == year) &&
-      (!powertrain ||
-        (powertrain === "EV" && v.vehicle_type === "BEV") ||
-        v.vehicle_type === powertrain
-      )
-    );
-  }, [brand, model, year, powertrain, vehicles]);
+  const filteredVehicles = useMemo(() => vehicles.filter(v =>
+    (!brand || v.brand === brand) &&
+    (!model || v.model === model) &&
+    (!year  || v.year == year) &&
+    (!powertrain ||
+      (powertrain === "EV" && v.vehicle_type === "BEV") ||
+      v.vehicle_type === powertrain)
+  ), [brand, model, year, powertrain, vehicles]);
 
   async function calculateComparison(vehiclesList, distanceOverride) {
-    if (vehiclesList.length === 0) {
-      setSelectedData([]);
-      return;
-    }
+    if (vehiclesList.length === 0) { setSelectedData([]); return; }
     setLoading(true);
     try {
-      console.group("📡 calculateComparison");
-      console.log("▶ Sending vehicles:", vehiclesList.map(v => ({
-        brand: v.brand, model: v.model, year: v.year
-      })));
-      console.log("▶ Country:", country, "| Grid year: 2023");
-
       const effectiveDistance = distanceOverride ?? distanceKm;
       const results = await apiClient.compareMultiple(
-        country,
-        2023,
-        vehiclesList.map(v => ({
-          brand: v.brand,
-          model: v.model,
-          year: v.year
-        })),
+        country, 2023,
+        vehiclesList.map(v => ({ brand: v.brand, model: v.model, year: v.year })),
         effectiveDistance
       );
-
-      console.log("◀ Raw API response:", results);
-      console.log("◀ Response length:", results.length, "| Sent:", vehiclesList.length);
-
       const combined = vehiclesList.map(v => {
         const match = results.find(
-          r => r.brand === v.brand && (r.model === v.model || r.vehicle === v.model) && String(r.year) === String(v.year)
+          r => r.brand === v.brand &&
+               (r.model === v.model || r.vehicle === v.model) &&
+               String(r.year) === String(v.year)
         );
-        return {
-          ...v,
-          lifecycle: (match && !match.error) ? match : null,
-          lifecycleError: match?.error ?? null
-        };
+        return { ...v, lifecycle: (match && !match.error) ? match : null, lifecycleError: match?.error ?? null };
       });
-
-      console.groupEnd();
-
       setSelectedData(combined);
       setAiSummary(null);
       setAiError(null);
-    } catch (err) {
-      console.error("❌ Comparison API error:", err);
-      console.groupEnd();
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error("Comparison API error:", err); }
+    finally { setLoading(false); }
   }
 
   async function toggleVehicle(vehicle) {
     const exists = selectedVehicles.find(
-      v =>
-        v.brand === vehicle.brand &&
-        v.model === vehicle.model &&
-        v.year === vehicle.year
+      v => v.brand === vehicle.brand && v.model === vehicle.model && v.year === vehicle.year
     );
-
     let updated;
-
     if (exists) {
       updated = selectedVehicles.filter(
-        v =>
-          !(
-            v.brand === vehicle.brand &&
-            v.model === vehicle.model &&
-            v.year === vehicle.year
-          )
+        v => !(v.brand === vehicle.brand && v.model === vehicle.model && v.year === vehicle.year)
       );
     } else {
       if (selectedVehicles.length >= 3) return;
       updated = [...selectedVehicles, vehicle];
     }
-
     setSelectedVehicles(updated);
     await calculateComparison(updated);
   }
@@ -194,94 +122,53 @@ export default function Compare() {
     calculateComparison(updated);
   }
 
-  // ── PARALLEL: Gemini AI + winner vehicle detail (image + specs) ──
   async function fetchAiSummary(vehiclesWithData) {
-    setAiLoading(true);
-    setAiSummary(null);
-    setAiError(null);
-
-    // 1. Find winner client-side — lowest total_for_distance_kg
+    setAiLoading(true); setAiSummary(null); setAiError(null);
     const winner = vehiclesWithData.reduce((best, v) => {
       const total = v.lifecycle?.total_for_distance_kg ?? Infinity;
       return total < (best.lifecycle?.total_for_distance_kg ?? Infinity) ? v : best;
     }, vehiclesWithData[0]);
-
-    console.log("🏆 Client-side winner:", `${winner.brand} ${winner.model} ${winner.year}`);
-
     try {
-      // 2. Fire Gemini analysis + winner DB lookup in parallel
       const [aiRes, winnerRes] = await Promise.all([
-
         fetch(`${API}/ai-summary`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             vehicles: vehiclesWithData.map(v => ({
-              brand: v.brand,
-              model: v.model,
-              year: v.year,
-              vehicle_type: v.vehicle_type,
-              lifecycle: v.lifecycle
+              brand: v.brand, model: v.model, year: v.year,
+              vehicle_type: v.vehicle_type, lifecycle: v.lifecycle
             })),
             distance_km: distanceKm
           })
         }),
-
         fetch(`${API}/winner-detail`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            brand: winner.brand,
-            model: winner.model,
-            year: winner.year
-          })
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ brand: winner.brand, model: winner.model, year: winner.year })
         })
-
       ]);
-
       const [aiData, winnerData] = await Promise.all([aiRes.json(), winnerRes.json()]);
-
-      if (aiData.error) {
-        setAiError(aiData.error);
-        return;
-      }
-
-      console.log("🤖 Gemini response:", aiData);
-      console.log("🚗 Winner detail:", winnerData);
-
-      // 3. Merge: winner image from DB overrides anything Gemini returned
+      if (aiData.error) { setAiError(aiData.error); return; }
       setAiSummary({
         ...aiData,
         winner_image_url: winnerData.image_url ?? aiData.winner_image_url ?? null,
-        winner_specs:     winnerData.specs     ?? null,
-        winner_stats:     winner.lifecycle     ?? null,
+        winner_specs:     winnerData.specs ?? null,
+        winner_stats:     winner.lifecycle ?? null,
       });
-
     } catch (err) {
-      console.error("AI summary error:", err);
       setAiError("Failed to load AI analysis. Please try again.");
-    } finally {
-      setAiLoading(false);
-    }
+    } finally { setAiLoading(false); }
   }
 
   const brands = [...new Set(vehicles.map(v => v.brand))].sort();
   const models = [...new Set(vehicles.map(v => v.model))].sort();
-  const years = [...new Set(vehicles.map(v => v.year))].sort((a, b) => b - a);
+  const years  = [...new Set(vehicles.map(v => v.year))].sort((a, b) => b - a);
 
   const barData = {
     labels: selectedData.map(v => `${v.brand} ${v.model}`),
-    datasets: [
-      {
-        label: `Total CO₂ over ${distanceKm.toLocaleString()} km (kg)`,
-        data: selectedData.map(v =>
-          v.lifecycle ? v.lifecycle.total_for_distance_kg : 0
-        ),
-        backgroundColor: "rgba(0,200,83,0.6)",
-        borderColor: "rgba(0,200,83,1)",
-        borderWidth: 1
-      }
-    ]
+    datasets: [{
+      label: `Total CO₂ over ${distanceKm.toLocaleString()} km (kg)`,
+      data: selectedData.map(v => v.lifecycle?.total_for_distance_kg ?? 0),
+      backgroundColor: "rgba(0,200,83,0.6)", borderColor: "rgba(0,200,83,1)", borderWidth: 1
+    }]
   };
 
   const stackedData = {
@@ -289,77 +176,49 @@ export default function Compare() {
     datasets: [
       {
         label: "Manufacturing kg CO₂ (fixed)",
-        data: selectedData.map(v =>
-          v.lifecycle ? v.lifecycle.manufacturing_total_kg : 0
-        ),
+        data: selectedData.map(v => v.lifecycle?.manufacturing_total_kg ?? 0),
         backgroundColor: "#00C853"
       },
       {
         label: `Operational kg CO₂ (${distanceKm.toLocaleString()} km)`,
-        data: selectedData.map(v =>
-          v.lifecycle ? v.lifecycle.operational_total_kg : 0
-        ),
+        data: selectedData.map(v => v.lifecycle?.operational_total_kg ?? 0),
         backgroundColor: "#69F0AE"
+      },
+      {
+        label: "End-of-Life Recycling kg CO₂ (fixed)",
+        data: selectedData.map(v => v.lifecycle?.recycling_kg ?? 0),
+        backgroundColor: "#B2DFDB"
       }
     ]
   };
 
   const barOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false,
     plugins: {
       legend: { position: "top" },
-      tooltip: {
-        callbacks: {
-          label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString(undefined, {maximumFractionDigits: 1})} kg CO₂`
-        }
-      }
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg CO₂` } }
     },
-    scales: {
-      y: {
-        beginAtZero: true,
-        title: { display: true, text: "kg CO₂" }
-      }
-    }
+    scales: { y: { beginAtZero: true, title: { display: true, text: "kg CO₂" } } }
   };
 
   const stackedOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false,
     plugins: {
       legend: { position: "top" },
-      tooltip: {
-        callbacks: {
-          label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString(undefined, {maximumFractionDigits: 1})} kg CO₂`
-        }
-      }
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg CO₂` } }
     },
-    scales: {
-      x: { stacked: true },
-      y: {
-        stacked: true,
-        beginAtZero: true,
-        title: { display: true, text: "kg CO₂" }   // ← was "g CO₂", now fixed
-      }
-    }
+    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: "kg CO₂" } } }
   };
 
   const doughnutOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false,
     plugins: {
       legend: { position: "bottom" },
-      tooltip: {
-        callbacks: {
-          label: ctx => `${ctx.label}: ${ctx.parsed.toLocaleString(undefined, {maximumFractionDigits: 1})} kg CO₂`
-        }
-      }
+      tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg CO₂` } }
     }
   };
 
-
-  // ── SKELETON COMPONENTS ──────────────────────────────────────────────────
-
+  // ── SKELETONS ──────────────────────────────────────────────────────────────
   function SkeletonVehicleItem() {
     return (
       <div className="vehicle-item skeleton-vehicle-item">
@@ -369,14 +228,13 @@ export default function Compare() {
       </div>
     );
   }
-
   function SkeletonCard() {
     return (
       <div className="card comparison-card skeleton-card">
         <div className="skeleton skeleton-title" />
         <div className="skeleton skeleton-badge" />
         <div className="mt-md">
-          {[1,2,3,4].map(i => (
+          {[1,2,3,4,5].map(i => (
             <div key={i} className="emission-value">
               <div className="skeleton skeleton-label" />
               <div className="skeleton skeleton-value" />
@@ -386,7 +244,6 @@ export default function Compare() {
       </div>
     );
   }
-
   function SkeletonChart({ height = 300 }) {
     return (
       <div className="chart-container">
@@ -395,7 +252,6 @@ export default function Compare() {
       </div>
     );
   }
-
   function SkeletonDoughnut() {
     return (
       <div className="chart-container">
@@ -408,44 +264,66 @@ export default function Compare() {
   return (
     <div className="container">
 
+      <style>{`
+        .recycling-row { margin-top: 2px; }
+        .recycling-note {
+          font-size: 0.72rem;
+          opacity: 0.4;
+          font-style: italic;
+          margin-left: 4px;
+        }
+        .elv-box {
+          margin-top: 8px;
+          padding: 8px 12px;
+          background: rgba(178,223,219,0.06);
+          border: 1px solid rgba(178,223,219,0.15);
+          border-radius: 7px;
+        }
+        .elv-box-title {
+          font-size: 0.68rem;
+          letter-spacing: 1px;
+          text-transform: uppercase;
+          color: #B2DFDB;
+          opacity: 0.65;
+          margin-bottom: 6px;
+          font-weight: 600;
+        }
+        .elv-row {
+          display: flex;
+          justify-content: space-between;
+          font-size: 0.78rem;
+          margin-bottom: 3px;
+        }
+        .elv-row span:first-child { color: rgba(255,255,255,0.42); }
+        .elv-positive { color: #69F0AE !important; font-weight: 600; }
+        .elv-negative { color: #FF7043 !important; font-weight: 600; }
+        .elv-neutral  { color: rgba(255,255,255,0.65) !important; font-weight: 600; }
+      `}</style>
+
       <h1 className="text-center mb-lg">Compare Vehicles</h1>
 
       <section className="card mb-lg">
-
         <h3 className="mb-md">Select Vehicles (Max 3)</h3>
 
-        {/* GOOGLE-STYLE SEARCH BOX */}
         <div className="search-bar-wrapper">
           <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
           <input
-            type="text"
-            placeholder="Search brand or model…"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              searchVehicles(e.target.value);
-            }}
+            type="text" placeholder="Search brand or model…" value={search}
+            onChange={e => { setSearch(e.target.value); searchVehicles(e.target.value); }}
             className="search-bar-input"
           />
           {search && (
-            <button
-              className="search-clear-btn"
-              onClick={() => { setSearch(""); loadVehicles(); }}
-              aria-label="Clear search"
-            >
+            <button className="search-clear-btn" onClick={() => { setSearch(""); loadVehicles(); }} aria-label="Clear search">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
               </svg>
             </button>
           )}
         </div>
 
         <div className="filters">
-
           <div className="filter-group">
             <label>Brand</label>
             <select className="filter-select" onChange={e => setBrand(e.target.value)}>
@@ -453,7 +331,6 @@ export default function Compare() {
               {brands.map(b => <option key={b}>{b}</option>)}
             </select>
           </div>
-
           <div className="filter-group">
             <label>Model</label>
             <select className="filter-select" onChange={e => setModel(e.target.value)}>
@@ -461,7 +338,6 @@ export default function Compare() {
               {models.map(m => <option key={m}>{m}</option>)}
             </select>
           </div>
-
           <div className="filter-group">
             <label>Year</label>
             <select className="filter-select" onChange={e => setYear(e.target.value)}>
@@ -469,7 +345,6 @@ export default function Compare() {
               {years.map(y => <option key={y}>{y}</option>)}
             </select>
           </div>
-
           <div className="filter-group">
             <label>Powertrain</label>
             <select className="filter-select" onChange={e => setPowertrain(e.target.value)}>
@@ -480,14 +355,9 @@ export default function Compare() {
               <option value="HEV">HEV</option>
             </select>
           </div>
-
           <div className="filter-group">
             <label>Country</label>
-            <select
-              className="filter-select"
-              value={country}
-              onChange={e => setCountry(e.target.value)}
-            >
+            <select className="filter-select" value={country} onChange={e => setCountry(e.target.value)}>
               <option value="US">United States</option>
               <option value="DE">Germany</option>
               <option value="FR">France</option>
@@ -497,16 +367,13 @@ export default function Compare() {
               <option value="IN">India</option>
             </select>
           </div>
-
           <div className="filter-group distance-filter-group">
             <div className="distance-label-row">
               <label>Distance</label>
               <div className="distance-input-wrapper">
                 <input
-                  type="number"
-                  className="distance-number-input"
-                  value={distanceKm}
-                  onChange={(e) => {
+                  type="number" className="distance-number-input" value={distanceKm}
+                  onChange={e => {
                     const val = Math.min(300000, Math.max(100, Number(e.target.value) || 100));
                     setDistanceKm(val);
                     if (distanceDebounceRef.current) clearTimeout(distanceDebounceRef.current);
@@ -514,19 +381,15 @@ export default function Compare() {
                       if (selectedVehicles.length > 0) calculateComparison(selectedVehicles, val);
                     }, 400);
                   }}
-                  min="100"
-                  max="300000"
-                  step="100"
+                  min="100" max="300000" step="100"
                 />
                 <span className="distance-unit">km</span>
               </div>
             </div>
             <div className="slider-track-wrapper">
               <input
-                type="range"
-                className="distance-slider"
-                value={distanceKm}
-                onChange={(e) => {
+                type="range" className="distance-slider" value={distanceKm}
+                onChange={e => {
                   const val = Number(e.target.value);
                   setDistanceKm(val);
                   if (distanceDebounceRef.current) clearTimeout(distanceDebounceRef.current);
@@ -534,22 +397,14 @@ export default function Compare() {
                     if (selectedVehicles.length > 0) calculateComparison(selectedVehicles, val);
                   }, 400);
                 }}
-                min="100"
-                max="300000"
-                step="100"
+                min="100" max="300000" step="100"
               />
-              <div
-                className="slider-fill"
-                style={{ width: `${(distanceKm / 300000) * 100}%` }}
-              />
+              <div className="slider-fill" style={{ width: `${(distanceKm / 300000) * 100}%` }} />
             </div>
             <div className="slider-ticks">
-              <span>100 km</span>
-              <span>150k km</span>
-              <span>300k km</span>
+              <span>100 km</span><span>150k km</span><span>300k km</span>
             </div>
           </div>
-
         </div>
 
         <div className="vehicle-list mt-md">
@@ -557,9 +412,7 @@ export default function Compare() {
             ? Array.from({ length: 12 }).map((_, i) => <SkeletonVehicleItem key={i} />)
             : filteredVehicles.map((v, i) => {
                 const selected = selectedVehicles.find(
-                  s => s.brand === v.brand &&
-                    s.model === v.model &&
-                    s.year === v.year
+                  s => s.brand === v.brand && s.model === v.model && s.year === v.year
                 );
                 return (
                   <div
@@ -568,11 +421,7 @@ export default function Compare() {
                     onClick={() => toggleVehicle(v)}
                   >
                     <h5>{v.brand} {v.model}</h5>
-                    <p>
-                      <span className={`badge badge-${v.vehicle_type?.toLowerCase()}`}>
-                        {v.vehicle_type}
-                      </span>
-                    </p>
+                    <p><span className={`badge badge-${v.vehicle_type?.toLowerCase()}`}>{v.vehicle_type}</span></p>
                     <p>{v.year}</p>
                   </div>
                 );
@@ -586,21 +435,18 @@ export default function Compare() {
             <span>Loading more vehicles…</span>
           </div>
         )}
-
       </section>
 
+      {/* ── SELECTED VEHICLE CARDS ── */}
       <section className="mb-lg">
-
         <div className="flex-between mb-md">
           <h3>Selected Vehicles ({selectedVehicles.length}/3)</h3>
         </div>
-
         <div className="grid grid-3">
           {loading
             ? selectedVehicles.map((_, i) => <SkeletonCard key={i} />)
             : selectedData.map((v, i) => {
                 const lc = v.lifecycle;
-
                 if (!lc) {
                   return (
                     <div key={i} className="card comparison-card">
@@ -613,48 +459,109 @@ export default function Compare() {
                   );
                 }
 
+                const recyclingKg  = lc.recycling_kg ?? 0;
+                const hasRecycling = recyclingKg > 0;
+                const isEVType     = ["BEV", "EV", "PHEV"].includes(lc.vehicle_type);
+                const mat          = lc.recycling_materials;
+
                 return (
                   <div key={i} className="card comparison-card">
                     <button className="remove-btn" onClick={() => removeVehicle(v)}>×</button>
                     <h4>{v.brand} {v.model}</h4>
                     <div className="mt-md">
+
+                      {/* Operational */}
                       <div className="emission-value">
                         <span className="emission-label">Operational ({(lc.distance_km ?? distanceKm).toLocaleString()} km)</span>
                         <span className="emission-number">
-                          {(lc.operational_total_kg).toLocaleString(undefined, { maximumFractionDigits: 1 })} kg CO₂
+                          {lc.operational_total_kg.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg CO₂
                         </span>
                       </div>
+
+                      {/* Manufacturing */}
                       <div className="emission-value">
                         <span className="emission-label">Manufacturing (lifetime fixed)</span>
                         <span className="emission-number">
                           {lc.manufacturing_total_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg CO₂
                         </span>
                       </div>
-                      <div className="emission-value emission-value--total">
+
+                      {/* ── Recycling — always shown ── */}
+                      <div className="emission-value recycling-row">
+                        <span className="emission-label">
+                          ♻️ End-of-Life Recycling (fixed)
+                          {!isEVType && <span className="recycling-note">(no Li-ion pack)</span>}
+                        </span>
+                        <span className="emission-number" style={{ color: hasRecycling ? "inherit" : "rgba(255,255,255,0.28)" }}>
+                          {hasRecycling
+                            ? `${recyclingKg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg CO₂`
+                            : "—"
+                          }
+                          {lc.recycling_g_per_km > 0 && (
+                            <span style={{ opacity: 0.5, fontSize: "0.75em", marginLeft: 4 }}>
+                              ({lc.recycling_g_per_km} g/km)
+                            </span>
+                          )}
+                        </span>
+                      </div>
+
+                      {/* ELV material flow box — only if backend returned it */}
+                      {mat && (mat.metal_recovered_kg != null) && (
+                        <div className="elv-box">
+                          <div className="elv-box-title">ELV Material Recovery</div>
+                          {mat.dismantled_mass_kg != null && (
+                            <div className="elv-row">
+                              <span>Vehicle mass processed</span>
+                              <span className="elv-neutral">{mat.dismantled_mass_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg</span>
+                            </div>
+                          )}
+                          {mat.metal_recovered_kg != null && (
+                            <div className="elv-row">
+                              <span>↩ Metals recovered</span>
+                              <span className="elv-positive">{mat.metal_recovered_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg</span>
+                            </div>
+                          )}
+                          {mat.asr_waste_kg != null && (
+                            <div className="elv-row">
+                              <span>🗑 Shredder residue (ASR)</span>
+                              <span className="elv-negative">{mat.asr_waste_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Total */}
+                      <div className="emission-value emission-value--total" style={{ marginTop: 8 }}>
                         <span className="emission-label">Total over {(lc.distance_km ?? distanceKm).toLocaleString()} km</span>
                         <span className="emission-number emission-number--total">
                           {lc.total_for_distance_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg CO₂
                         </span>
                       </div>
+
+                      {/* Rate */}
                       <div className="emission-value">
                         <span className="emission-label">Rate</span>
                         <span className="emission-number" style={{ fontSize: "0.8rem", opacity: 0.7 }}>
                           {lc.total_g_per_km} g/km
+                          {lc.recycling_g_per_km > 0 && (
+                            <span style={{ opacity: 0.5, fontSize: "0.75em", marginLeft: 4 }}>
+                              (incl. {lc.recycling_g_per_km} g/km recycling)
+                            </span>
+                          )}
                         </span>
                       </div>
+
                     </div>
                   </div>
                 );
               })
           }
         </div>
-
       </section>
 
+      {/* ── CHARTS ── */}
       {(loading || selectedData.length > 0) && (
-
         <section className="charts-section">
-
           {loading ? (
             <>
               <SkeletonChart height={300} />
@@ -683,23 +590,23 @@ export default function Compare() {
                 {selectedData.map((v, i) => {
                   const lc = v.lifecycle;
                   if (!lc) return null;
+                  const recyclingKg  = lc.recycling_kg ?? 0;
+                  const labels       = ["Manufacturing (fixed)", `Operational (${distanceKm.toLocaleString()} km)`];
+                  const dataPoints   = [lc.manufacturing_total_kg, lc.operational_total_kg];
+                  const bgColors     = ["#00C853", "#69F0AE"];
+                  const borderColors = ["#009624", "#2bbd7e"];
+                  if (recyclingKg > 0) {
+                    labels.push("End-of-Life Recycling (fixed)");
+                    dataPoints.push(recyclingKg);
+                    bgColors.push("#B2DFDB");
+                    borderColors.push("#80CBC4");
+                  }
                   return (
                     <div className="chart-container" key={i}>
                       <h3>{v.brand} {v.model}</h3>
                       <div style={{ position: "relative", height: "280px" }}>
                         <Doughnut
-                          data={{
-                            labels: ["Manufacturing (fixed)", `Operational (${distanceKm.toLocaleString()} km)`],
-                            datasets: [{
-                              data: [
-                                lc.manufacturing_total_kg,
-                                lc.operational_total_kg
-                              ],
-                              backgroundColor: ["#00C853", "#69F0AE"],
-                              borderColor: ["#009624", "#2bbd7e"],
-                              borderWidth: 1
-                            }]
-                          }}
+                          data={{ labels, datasets: [{ data: dataPoints, backgroundColor: bgColors, borderColor: borderColors, borderWidth: 1 }] }}
                           options={doughnutOptions}
                         />
                       </div>
@@ -709,15 +616,12 @@ export default function Compare() {
               </div>
             </>
           )}
-
         </section>
-
       )}
 
-      {/* ── AI SUMMARY SECTION ── */}
+      {/* ── AI SUMMARY ── */}
       {selectedData.filter(v => v.lifecycle && !v.lifecycleError).length >= 1 && (
         <div className="ai-generate-wrap">
-
           {!aiSummary && !aiLoading && (
             <button
               className="ai-generate-btn"
@@ -730,16 +634,10 @@ export default function Compare() {
             </button>
           )}
 
-          {/* Error state */}
           {aiError && !aiLoading && (
             <div className="ai-error-wrap">
               <p className="ai-error-msg">⚠️ {aiError}</p>
-              <button
-                className="ai-generate-btn"
-                onClick={() => fetchAiSummary(selectedData.filter(v => v.lifecycle && !v.lifecycleError))}
-              >
-                Retry
-              </button>
+              <button className="ai-generate-btn" onClick={() => fetchAiSummary(selectedData.filter(v => v.lifecycle && !v.lifecycleError))}>Retry</button>
             </div>
           )}
 
@@ -748,8 +646,7 @@ export default function Compare() {
               <div className="ai-summary-header">
                 <div className="ai-badge">
                   <svg viewBox="0 0 24 24" fill="none" width="16" height="16">
-                    <path d="M12 2L9.5 9.5L2 12L9.5 14.5L12 22L14.5 14.5L22 12L14.5 9.5L12 2Z"
-                      fill="currentColor"/>
+                    <path d="M12 2L9.5 9.5L2 12L9.5 14.5L12 22L14.5 14.5L22 12L14.5 9.5L12 2Z" fill="currentColor"/>
                   </svg>
                   Gemini AI Analysis
                 </div>
@@ -771,44 +668,33 @@ export default function Compare() {
                 </div>
               ) : aiSummary && (
                 <div className="ai-summary-content">
-
-                  {/* WINNER CARD */}
                   <div className="ai-winner-card">
                     {aiSummary.winner_image_url && (
                       <div className="ai-winner-img-wrap">
-                        <img
-                          src={aiSummary.winner_image_url}
-                          alt={`${aiSummary.winner} image`}
-                          className="ai-winner-img"
-                          onError={e => { e.target.style.display = "none"; }}
-                        />
+                        <img src={aiSummary.winner_image_url} alt={`${aiSummary.winner} image`} className="ai-winner-img" onError={e => { e.target.style.display = "none"; }} />
                       </div>
                     )}
                     <div className="ai-winner-info">
                       <div className="ai-winner-label">🏆 Best Pick</div>
                       <h3 className="ai-winner-name">{aiSummary.winner}</h3>
-                      <span className={`badge badge-${aiSummary.winner_type?.toLowerCase()}`}>
-                        {aiSummary.winner_type}
-                      </span>
+                      <span className={`badge badge-${aiSummary.winner_type?.toLowerCase()}`}>{aiSummary.winner_type}</span>
                       <p className="ai-winner-verdict">{aiSummary.verdict}</p>
-
-                      {/* Winner stats from lifecycle data (parallel fetch) */}
                       {aiSummary.winner_stats && (
                         <div className="ai-winner-stats">
                           <div className="ai-winner-stat">
                             <span>Operational</span>
-                            <strong>
-                              {aiSummary.winner_stats.operational_total_kg?.toLocaleString(
-                                undefined, { maximumFractionDigits: 0 }
-                              )} kg
-                            </strong>
+                            <strong>{aiSummary.winner_stats.operational_total_kg?.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg</strong>
                           </div>
                           <div className="ai-winner-stat">
                             <span>Manufacturing</span>
+                            <strong>{aiSummary.winner_stats.manufacturing_total_kg?.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg</strong>
+                          </div>
+                          <div className="ai-winner-stat">
+                            <span>♻️ Recycling</span>
                             <strong>
-                              {aiSummary.winner_stats.manufacturing_total_kg?.toLocaleString(
-                                undefined, { maximumFractionDigits: 0 }
-                              )} kg
+                              {(aiSummary.winner_stats.recycling_kg ?? 0) > 0
+                                ? `${aiSummary.winner_stats.recycling_kg.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg`
+                                : "—"}
                             </strong>
                           </div>
                           <div className="ai-winner-stat">
@@ -817,29 +703,12 @@ export default function Compare() {
                           </div>
                         </div>
                       )}
-
-                      {/* Winner vehicle specs from afdc_vehicles (parallel fetch) */}
                       {aiSummary.winner_specs && (
                         <div className="ai-winner-specs">
-                          {aiSummary.winner_specs.range_km && (
-                            <div className="ai-winner-spec">
-                              <span>Range</span>
-                              <strong>{aiSummary.winner_specs.range_km} km</strong>
-                            </div>
-                          )}
-                          {aiSummary.winner_specs.fuel_economy && (
-                            <div className="ai-winner-spec">
-                              <span>Efficiency</span>
-                              <strong>{aiSummary.winner_specs.fuel_economy}</strong>
-                            </div>
-                          )}
+                          {aiSummary.winner_specs.range_km && <div className="ai-winner-spec"><span>Range</span><strong>{aiSummary.winner_specs.range_km} km</strong></div>}
+                          {aiSummary.winner_specs.fuel_economy && <div className="ai-winner-spec"><span>Efficiency</span><strong>{aiSummary.winner_specs.fuel_economy}</strong></div>}
                           {aiSummary.winner_specs.manufacturer_url && (
-                            <a
-                              href={aiSummary.winner_specs.manufacturer_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="ai-winner-mfr-link"
-                            >
+                            <a href={aiSummary.winner_specs.manufacturer_url} target="_blank" rel="noopener noreferrer" className="ai-winner-mfr-link">
                               View on manufacturer site →
                             </a>
                           )}
@@ -848,45 +717,25 @@ export default function Compare() {
                     </div>
                   </div>
 
-                  {/* REASONS */}
                   <div className="ai-reasons">
                     <h4>Why this vehicle wins</h4>
                     <ul className="ai-reasons-list">
                       {aiSummary.reasons?.map((r, i) => (
-                        <li key={i}>
-                          <span className="ai-reason-dot" />
-                          {r}
-                        </li>
+                        <li key={i}><span className="ai-reason-dot" />{r}</li>
                       ))}
                     </ul>
                   </div>
 
-                  {/* VEHICLE BREAKDOWN */}
                   <div className="ai-breakdown">
                     <h4>All vehicles compared</h4>
                     <div className="ai-breakdown-grid">
                       {aiSummary.breakdown?.map((v, i) => (
                         <div key={i} className={`ai-breakdown-card ${v.is_winner ? "ai-breakdown-winner" : ""}`}>
-                          {v.image_url && (
-                            <img
-                              src={v.image_url}
-                              alt={v.name}
-                              className="ai-breakdown-img"
-                              onError={e => { e.target.style.display = "none"; }}
-                            />
-                          )}
+                          {v.image_url && <img src={v.image_url} alt={v.name} className="ai-breakdown-img" onError={e => { e.target.style.display = "none"; }} />}
                           <div className="ai-breakdown-name">{v.name}</div>
-                          <div className="ai-breakdown-type">
-                            <span className={`badge badge-${v.type?.toLowerCase()}`}>{v.type}</span>
-                          </div>
-                          <div className="ai-breakdown-stat">
-                            <span>Total CO₂</span>
-                            <strong>{v.total_kg?.toLocaleString(undefined, {maximumFractionDigits:0})} kg</strong>
-                          </div>
-                          <div className="ai-breakdown-stat">
-                            <span>Rate</span>
-                            <strong>{v.rate_g_per_km} g/km</strong>
-                          </div>
+                          <div className="ai-breakdown-type"><span className={`badge badge-${v.type?.toLowerCase()}`}>{v.type}</span></div>
+                          <div className="ai-breakdown-stat"><span>Total CO₂</span><strong>{v.total_kg?.toLocaleString(undefined, {maximumFractionDigits:0})} kg</strong></div>
+                          <div className="ai-breakdown-stat"><span>Rate</span><strong>{v.rate_g_per_km} g/km</strong></div>
                           <p className="ai-breakdown-note">{v.note}</p>
                         </div>
                       ))}
@@ -903,7 +752,6 @@ export default function Compare() {
           )}
         </div>
       )}
-
     </div>
   );
 }

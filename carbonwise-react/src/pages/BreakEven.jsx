@@ -1,572 +1,590 @@
-import React, { useState, useEffect } from 'react';
-import apiClient from '../services/api';
-import Select from '../components/ui/Select';
-import Button from '../components/ui/Button';
-import Card from '../components/ui/Card';
-import Badge from '../components/ui/Badge';
-import LoadingSpinner from '../components/ui/LoadingSpinner';
-import ErrorMessage from '../components/ui/ErrorMessage';
-import LineChart from '../components/charts/LineChart';
-import '../styles/break-even.css';
+import React, { useEffect, useState, useMemo, useRef } from "react";
+import "../styles/break-even.css";
 
-/**
- * BreakEven Page Component
- * Calculate break-even distance between EV and ICE vehicles
- */
-function BreakEven() {
-  // Vehicle data
-  const [vehicles, setVehicles] = useState([]);
-  const [countries, setCountries] = useState([]);
-  
-  // EV selection state
-  const [evSelection, setEvSelection] = useState({
-    brand: '',
-    model: '',
-    year: ''
-  });
-  
-  // ICE selection state
-  const [iceSelection, setIceSelection] = useState({
-    brand: '',
-    model: '',
-    year: ''
-  });
-  
-  // Analysis parameters
-  const [analysisParams, setAnalysisParams] = useState({
-    country: 'US',
-    gridYear: 2024
-  });
-  
-  // Selected vehicles for preview
-  const [evVehicle, setEvVehicle] = useState(null);
-  const [iceVehicle, setIceVehicle] = useState(null);
-  
-  // Break-even results
-  const [breakEvenData, setBreakEvenData] = useState(null);
-  
-  // UI state
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [calculating, setCalculating] = useState(false);
+import {
+  Chart as ChartJS,
+  LineElement,
+  PointElement,
+  CategoryScale,
+  LinearScale,
+  Tooltip,
+  Legend,
+  Filler
+} from "chart.js";
 
-  // Fetch vehicles and countries on mount
+import { Line } from "react-chartjs-2";
+
+ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend, Filler);
+
+const API = "http://localhost:5000";
+
+const COUNTRIES = [
+  { value: "US", label: "United States" },
+  { value: "DE", label: "Germany" },
+  { value: "FR", label: "France" },
+  { value: "UK", label: "United Kingdom" },
+  { value: "CN", label: "China" },
+  { value: "JP", label: "Japan" },
+  { value: "IN", label: "India" },
+];
+
+// All powertrain types — matches engine.py
+const POWERTRAIN_TYPES = ["EV", "BEV", "HEV", "PHEV", "ICE"];
+
+// Badge CSS class per type
+const badgeClass = t => {
+  if (!t) return "";
+  const m = { BEV: "bev", EV: "bev", HEV: "hev", PHEV: "phev", ICE: "ice" };
+  return m[t.toUpperCase()] ?? t.toLowerCase();
+};
+
+// ── Selector panel — used for both Vehicle A and Vehicle B ──────────────────
+function VehicleSelector({ side, vehicles, vehiclesLoading, value, onChange }) {
+  const { powertrain, brand, model, year } = value;
+
+  // Filter pool by selected powertrain (or all if none selected)
+  const pool = useMemo(() => {
+    if (!powertrain) return vehicles;
+    // EV selector shows both EV and BEV
+    if (powertrain === "EV") return vehicles.filter(v => v.vehicle_type === "EV" || v.vehicle_type === "BEV");
+    return vehicles.filter(v => v.vehicle_type === powertrain);
+  }, [powertrain, vehicles]);
+
+  const brands = useMemo(() => [...new Set(pool.map(v => v.brand))].sort(), [pool]);
+
+  const models = useMemo(() =>
+    brand ? [...new Set(pool.filter(v => v.brand === brand).map(v => v.model))].sort() : [],
+    [brand, pool]);
+
+  const years = useMemo(() =>
+    (brand && model)
+      ? [...new Set(pool.filter(v => v.brand === brand && v.model === model).map(v => v.year))].sort((a, b) => b - a)
+      : [],
+    [brand, model, pool]);
+
+  // Resolve full vehicle object
+  const resolved = useMemo(() =>
+    (brand && model && year)
+      ? pool.find(v => v.brand === brand && v.model === model && String(v.year) === String(year)) ?? null
+      : null,
+    [brand, model, year, pool]);
+
+  // Propagate resolved vehicle up
+  const prevResolved = useRef(null);
   useEffect(() => {
-    fetchInitialData();
-  }, []);
+    if (resolved !== prevResolved.current) {
+      prevResolved.current = resolved;
+      onChange({ ...value, resolved });
+    }
+  }, [resolved]);
 
-  const fetchInitialData = async () => {
-    setLoading(true);
-    setError(null);
-    
+  const set = patch => onChange({ ...value, ...patch, resolved: null });
+
+  const label = side === "a" ? "Vehicle A" : "Vehicle B";
+  const defaultPt = side === "a" ? "EV" : "ICE";
+
+  return (
+    <div className="be-selector-col">
+      <h4 className="be-selector-title">
+        {powertrain
+          ? <span className={`badge badge-${badgeClass(powertrain)}`}>{powertrain}</span>
+          : <span className="badge" style={{ opacity: 0.4 }}>—</span>}
+        &nbsp;{label}
+      </h4>
+
+      {/* Powertrain type pills */}
+      <div className="be-type-pills mb-md">
+        {POWERTRAIN_TYPES.map(pt => (
+          <button
+            key={pt}
+            className={`be-type-pill badge badge-${badgeClass(pt)} ${powertrain === pt ? "be-type-pill--active" : ""}`}
+            onClick={() => set({ powertrain: pt, brand: "", model: "", year: "" })}
+          >
+            {pt}
+          </button>
+        ))}
+        <button
+          className={`be-type-pill ${!powertrain ? "be-type-pill--active" : ""}`}
+          style={{ opacity: 0.5 }}
+          onClick={() => set({ powertrain: "", brand: "", model: "", year: "" })}
+        >
+          All
+        </button>
+      </div>
+
+      <div className="filters" style={{ flexDirection: "column", gap: "0.6rem" }}>
+        <div className="filter-group">
+          <label>Brand</label>
+          <select
+            className="filter-select"
+            value={brand}
+            onChange={e => set({ brand: e.target.value, model: "", year: "" })}
+          >
+            <option value="">All Brands</option>
+            {vehiclesLoading
+              ? <option disabled>Loading…</option>
+              : brands.map(b => <option key={b}>{b}</option>)}
+          </select>
+        </div>
+
+        <div className="filter-group">
+          <label>Model</label>
+          <select
+            className="filter-select"
+            value={model}
+            disabled={!brand}
+            onChange={e => set({ model: e.target.value, year: "" })}
+          >
+            <option value="">Select Model</option>
+            {models.map(m => <option key={m}>{m}</option>)}
+          </select>
+        </div>
+
+        <div className="filter-group">
+          <label>Year</label>
+          <select
+            className="filter-select"
+            value={year}
+            disabled={!model}
+            onChange={e => set({ year: e.target.value })}
+          >
+            <option value="">Select Year</option>
+            {years.map(y => <option key={y}>{y}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {resolved && (
+        <div className="selected-vehicle mt-md">
+          <h5>{resolved.brand} {resolved.model}</h5>
+          <p>
+            <span className={`badge badge-${badgeClass(resolved.vehicle_type)}`}>
+              {resolved.vehicle_type}
+            </span>
+            &nbsp;{resolved.year}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ───────────────────────────────────────────────────────────
+export default function BreakEven() {
+
+  // Vehicle list — same paginated loading as Compare
+  const [vehicles,            setVehicles]            = useState([]);
+  const [vehiclesLoading,     setVehiclesLoading]     = useState(true);
+  const [vehiclesLoadingMore, setVehiclesLoadingMore] = useState(false);
+  const [search,              setSearch]              = useState("");
+
+  // Vehicle A and B selection state
+  const [selA, setSelA] = useState({ powertrain: "EV",  brand: "", model: "", year: "", resolved: null });
+  const [selB, setSelB] = useState({ powertrain: "ICE", brand: "", model: "", year: "", resolved: null });
+
+  // Params / results
+  const [country,       setCountry]       = useState("US");
+  const [gridYear,      setGridYear]      = useState(2023);
+  const [breakEvenData, setBreakEvenData] = useState(null);
+  const [calculating,   setCalculating]   = useState(false);
+  const [calcError,     setCalcError]     = useState(null);
+
+  // ── Load vehicles — parallel pages, same as Compare ─────────────────────
+  useEffect(() => { loadVehicles(); }, []);
+
+  async function loadVehicles() {
+    setVehiclesLoading(true);
+    setVehicles([]);
+    const PAGE_SIZE = 200;
+
+    // Fetch page 1 first to get totalPages, then fetch all remaining pages in parallel
     try {
-      const [vehiclesData, countriesData] = await Promise.all([
-        apiClient.getAllVehicles(),
-        apiClient.getCountries()
-      ]);
-      
-      setVehicles(vehiclesData);
-      setCountries(countriesData);
-    } catch (err) {
-      setError(err.message || 'Failed to load data. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+      const firstRes  = await fetch(`${API}/vehicles?page=1&limit=${PAGE_SIZE}`);
+      const firstJson = await firstRes.json();
+      const firstBatch = Array.isArray(firstJson) ? firstJson : firstJson.vehicles ?? [];
+      const totalPages = firstJson.pages ?? 1;
 
-  // Get unique brands for EV (only those with electric_wh_per_km)
-  const getEvBrands = () => {
-    const evVehicles = vehicles.filter(v => v.type === 'EV' && v.electric_wh_per_km !== null);
-    const brands = [...new Set(evVehicles.map(v => v.brand))].sort();
-    return brands.map(brand => ({ value: brand, label: brand }));
-  };
+      setVehicles(firstBatch);
+      setVehiclesLoading(false);
 
-  // Get unique brands for ICE
-  const getIceBrands = () => {
-    const iceVehicles = vehicles.filter(v => v.type === 'ICE');
-    const brands = [...new Set(iceVehicles.map(v => v.brand))].sort();
-    return brands.map(brand => ({ value: brand, label: brand }));
-  };
-
-  // Get models for selected brand
-  const getModels = (type, brand) => {
-    if (!brand) return [];
-    
-    const vehicleType = type === 'ev' ? 'EV' : 'ICE';
-    let filteredVehicles = vehicles.filter(v => v.brand === brand && v.type === vehicleType);
-    
-    // For EVs, only show those with electric consumption data
-    if (type === 'ev') {
-      filteredVehicles = filteredVehicles.filter(v => v.electric_wh_per_km !== null);
-    }
-    
-    const models = [...new Set(filteredVehicles.map(v => v.model))].sort();
-    return models.map(model => ({ value: model, label: model }));
-  };
-
-  // Get years for selected brand and model
-  const getYears = (type, brand, model) => {
-    if (!brand || !model) return [];
-    
-    const vehicleType = type === 'ev' ? 'EV' : 'ICE';
-    const years = [...new Set(vehicles
-      .filter(v => v.brand === brand && v.model === model && v.type === vehicleType)
-      .map(v => v.Year))].sort((a, b) => b - a);
-    
-    return years.map(year => ({ value: year.toString(), label: year.toString() }));
-  };
-
-  // Handle EV selection changes
-  const handleEvBrandChange = (brand) => {
-    setEvSelection({ brand, model: '', year: '' });
-    setEvVehicle(null);
-  };
-
-  const handleEvModelChange = (model) => {
-    setEvSelection({ ...evSelection, model, year: '' });
-    setEvVehicle(null);
-  };
-
-  const handleEvYearChange = (year) => {
-    setEvSelection({ ...evSelection, year });
-    
-    // Find and set the selected vehicle
-    const vehicle = vehicles.find(v => 
-      v.brand === evSelection.brand && 
-      v.model === evSelection.model && 
-      v.Year == year && 
-      v.type === 'EV'
-    );
-    
-    setEvVehicle(vehicle);
-  };
-
-  // Handle ICE selection changes
-  const handleIceBrandChange = (brand) => {
-    setIceSelection({ brand, model: '', year: '' });
-    setIceVehicle(null);
-  };
-
-  const handleIceModelChange = (model) => {
-    setIceSelection({ ...iceSelection, model, year: '' });
-    setIceVehicle(null);
-  };
-
-  const handleIceYearChange = (year) => {
-    setIceSelection({ ...iceSelection, year });
-    
-    // Find and set the selected vehicle
-    const vehicle = vehicles.find(v => 
-      v.brand === iceSelection.brand && 
-      v.model === iceSelection.model && 
-      v.Year == year && 
-      v.type === 'ICE'
-    );
-    
-    setIceVehicle(vehicle);
-  };
-
-  // Handle calculate button click
-  const handleCalculate = async () => {
-    if (!evVehicle || !iceVehicle) {
-      setError('Please select both EV and ICE vehicles');
-      return;
-    }
-    
-    setCalculating(true);
-    setError(null);
-    
-    try {
-      const result = await apiClient.calculateBreakEven(
-        analysisParams.country,
-        analysisParams.gridYear,
-        {
-          brand: evVehicle.brand,
-          model: evVehicle.model,
-          Year: evVehicle.Year
-        },
-        {
-          brand: iceVehicle.brand,
-          model: iceVehicle.model,
-          Year: iceVehicle.Year
-        }
-      );
-      
-      if (result.error) {
-        setError(result.error);
-      } else {
-        setBreakEvenData(result);
+      if (totalPages > 1) {
+        setVehiclesLoadingMore(true);
+        // Fetch all remaining pages simultaneously
+        const pageNums = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+        const results  = await Promise.all(
+          pageNums.map(p =>
+            fetch(`${API}/vehicles?page=${p}&limit=${PAGE_SIZE}`)
+              .then(r => r.json())
+              .then(j => (Array.isArray(j) ? j : j.vehicles ?? []))
+          )
+        );
+        setVehicles(prev => [...prev, ...results.flat()]);
       }
     } catch (err) {
-      setError(err.message || 'Failed to calculate break-even. Please try again.');
+      console.error("Failed to load vehicles:", err);
+      setVehiclesLoading(false);
+    } finally {
+      setVehiclesLoadingMore(false);
+    }
+  }
+
+  async function searchVehicles(query) {
+    if (query.length < 2) { loadVehicles(); return; }
+    setVehiclesLoading(true);
+    const res  = await fetch(`${API}/vehicle-search?q=${query}`);
+    const data = await res.json();
+    setVehicles(data);
+    setVehiclesLoading(false);
+  }
+
+  // ── Calculate ────────────────────────────────────────────────────────────
+  const vA = selA.resolved;
+  const vB = selB.resolved;
+
+  async function handleCalculate() {
+    if (!vA || !vB) return;
+    setCalculating(true);
+    setCalcError(null);
+    setBreakEvenData(null);
+    try {
+      const res = await fetch(`${API}/break-even`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicle_a: { brand: vA.brand, model: vA.model, year: vA.year },
+          vehicle_b: { brand: vB.brand, model: vB.model, year: vB.year },
+          country,
+          grid_year: gridYear,
+        })
+      });
+      const data = await res.json();
+      if (data.error) setCalcError(data.error);
+      else            setBreakEvenData(data);
+    } catch {
+      setCalcError("Failed to calculate break-even. Please try again.");
     } finally {
       setCalculating(false);
     }
-  };
+  }
 
-  // Format large numbers
-  const formatLargeNumber = (value) => {
-    if (value === null || value === undefined) return 'N/A';
-    if (value >= 1000) {
-      return value.toLocaleString('en-US', { maximumFractionDigits: 1 });
-    }
-    return value.toFixed(1);
-  };
+  // ── Chart data ───────────────────────────────────────────────────────────
+  const chartData = useMemo(() => {
+    if (!breakEvenData) return null;
+    const bkm = breakEvenData.break_even_km;
+    if (!bkm || bkm <= 0) return null;
 
-  // Format emissions
-  const formatEmission = (value) => {
-    if (value === null || value === undefined) return 'N/A';
-    return value.toFixed(1);
-  };
+    const maxKm = Math.max(bkm * 2, 300_000);
+    const N     = 60;
+    const step  = maxKm / N;
+    const labels = [], aPts = [], bPts = [];
+    const mA = breakEvenData.a_manufacturing_total_kg;
+    const mB = breakEvenData.b_manufacturing_total_kg;
 
-  // Render cumulative emissions chart
-  const renderCumulativeChart = () => {
-    if (!breakEvenData || breakEvenData.break_even_km === null || breakEvenData.break_even_km === undefined || breakEvenData.break_even_km <= 0) {
-      return null;
-    }
-
-    const maxKm = Math.max(breakEvenData.break_even_km * 2, 300000);
-    const points = 50;
-    const step = maxKm / points;
-    
-    const labels = [];
-    const evData = [];
-    const iceData = [];
-    
-    // Get total manufacturing emissions in kg
-    const evManufTotalKg = breakEvenData.ev_manufacturing_total_kg || (breakEvenData.ev_manufacturing_g_per_km * 278600 / 1000);
-    const iceManufTotalKg = breakEvenData.ice_manufacturing_total_kg || (breakEvenData.ice_manufacturing_g_per_km * 278600 / 1000);
-    
-    for (let i = 0; i <= points; i++) {
+    for (let i = 0; i <= N; i++) {
       const km = i * step;
-      labels.push(km / 1000); // Convert to thousands for display
-      
-      // Cumulative emissions = total manufacturing (kg) + (operational g/km * km / 1000)
-      evData.push(
-        evManufTotalKg + (breakEvenData.ev_operational_g_per_km * km / 1000)
-      );
-      
-      iceData.push(
-        iceManufTotalKg + (breakEvenData.ice_operational_g_per_km * km / 1000)
-      );
+      labels.push((km / 1000).toFixed(0));
+      aPts.push(+(mA + breakEvenData.a_operational_g_per_km * km / 1000).toFixed(1));
+      bPts.push(+(mB + breakEvenData.b_operational_g_per_km * km / 1000).toFixed(1));
     }
-    
-    // Calculate break-even point for annotation
-    const breakEvenKm = breakEvenData.break_even_km;
-    const breakEvenEmissions = evManufTotalKg + (breakEvenData.ev_operational_g_per_km * breakEvenKm / 1000);
-    
-    const chartData = {
-      labels: labels,
+
+    const bIdx = Math.round((bkm / maxKm) * N);
+    const bY   = +(mA + breakEvenData.a_operational_g_per_km * bkm / 1000).toFixed(1);
+    const bkPts = labels.map((_, i) => (i === bIdx ? bY : null));
+
+    const aLabel = `${breakEvenData.a_brand} ${breakEvenData.a_model} (${breakEvenData.a_vehicle_type})`;
+    const bLabel = `${breakEvenData.b_brand} ${breakEvenData.b_model} (${breakEvenData.b_vehicle_type})`;
+
+    // Colour Vehicle A green (lower operational), B red
+    const aIsLower = breakEvenData.a_operational_g_per_km <= breakEvenData.b_operational_g_per_km;
+    const colA = aIsLower ? "#00C853" : "#FF5252";
+    const colB = aIsLower ? "#FF5252" : "#00C853";
+
+    return {
+      labels,
       datasets: [
         {
-          label: 'EV Total Emissions',
-          data: evData,
-          borderColor: '#00C853',
-          backgroundColor: 'rgba(0, 200, 83, 0.1)',
-          tension: 0.4,
-          fill: true,
-          borderWidth: 2
+          label: aLabel,
+          data: aPts,
+          borderColor: colA,
+          backgroundColor: colA === "#00C853" ? "rgba(0,200,83,0.08)" : "rgba(255,82,82,0.08)",
+          borderWidth: 2, tension: 0.3, fill: true, pointRadius: 0, pointHoverRadius: 4,
         },
         {
-          label: 'ICE Total Emissions',
-          data: iceData,
-          borderColor: '#FF5252',
-          backgroundColor: 'rgba(255, 82, 82, 0.1)',
-          tension: 0.4,
-          fill: true,
-          borderWidth: 2
+          label: bLabel,
+          data: bPts,
+          borderColor: colB,
+          backgroundColor: colB === "#00C853" ? "rgba(0,200,83,0.08)" : "rgba(255,82,82,0.08)",
+          borderWidth: 2, tension: 0.3, fill: true, pointRadius: 0, pointHoverRadius: 4,
         },
         {
-          label: 'Break-Even Point',
-          data: [{x: breakEvenKm / 1000, y: breakEvenEmissions}],
-          pointRadius: 8,
-          pointBackgroundColor: '#FFD700',
-          pointBorderColor: '#FFA500',
+          label: "Break-Even Point",
+          data: bkPts,
+          showLine: false,
+          pointRadius: labels.map((_, i) => (i === bIdx ? 9 : 0)),
+          pointHoverRadius: 11,
+          pointBackgroundColor: "#FFD700",
+          pointBorderColor: "#FFA000",
           pointBorderWidth: 2,
-          showLine: false
-        }
-      ]
-    };
-    
-    const chartOptions = {
-      responsive: true,
-      maintainAspectRatio: true,
-      plugins: {
-        legend: { labels: { color: '#B0B0B0' } },
-        tooltip: {
-          callbacks: {
-            label: function(context) {
-              if (context.datasetIndex === 2) {
-                return 'Break-Even: ' + formatLargeNumber(breakEvenKm) + ' km (' + context.parsed.y.toFixed(0) + ' kg CO₂)';
-              }
-              return context.dataset.label + ': ' + context.parsed.y.toFixed(0) + ' kg CO₂';
-            }
-          }
-        }
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          grid: { color: 'rgba(255, 255, 255, 0.1)' },
-          ticks: { color: '#B0B0B0' },
-          title: {
-            display: true,
-            text: 'Cumulative Emissions (kg CO₂)',
-            color: '#B0B0B0'
-          }
+          borderColor: "transparent",
+          backgroundColor: "transparent",
         },
-        x: {
-          type: 'linear',
-          grid: { display: false },
-          ticks: { color: '#B0B0B0' },
-          title: {
-            display: true,
-            text: 'Distance (1000 km)',
-            color: '#B0B0B0'
+      ],
+    };
+  }, [breakEvenData]);
+
+  const chartOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: "top" },
+      tooltip: {
+        filter: item => item.parsed.y !== null,
+        callbacks: {
+          title:  items => `${items[0].label}k km`,
+          label:  ctx   => {
+            if (ctx.datasetIndex === 2)
+              return `Break-Even ≈ ${breakEvenData?.break_even_km?.toLocaleString(undefined, { maximumFractionDigits: 0 })} km`;
+            return `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg CO₂`;
           }
         }
       }
-    };
-    
-    return <LineChart data={chartData} options={chartOptions} height={300} />;
-  };
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: { maxTicksLimit: 8 }, title: { display: true, text: "Distance (1 000 km)" } },
+      y: { beginAtZero: true, title: { display: true, text: "Cumulative CO₂ (kg)" } },
+    }
+  }), [breakEvenData]);
 
-  // Render break-even results
-  const renderResults = () => {
-    if (!breakEvenData) return null;
-
-    const breakEvenKm = breakEvenData.break_even_km;
-    const hasValidBreakEven = breakEvenKm !== null && breakEvenKm !== undefined && breakEvenKm > 0;
-
+  // ── Skeletons — same as Compare ──────────────────────────────────────────
+  function SkeletonChart() {
     return (
-      <section className="mt-lg">
-        <Card className="mb-lg">
-          <h3 className="mb-md text-center">Break-Even Results</h3>
-          <div className="break-even-display">
-            <div className="break-even-value">
-              <span className="big-number">
-                {hasValidBreakEven ? formatLargeNumber(breakEvenKm) : 'N/A'}
-              </span>
-              <span className="unit">kilometers</span>
-            </div>
-            <p className="text-center mt-md">
-              {breakEvenData.message ? (
-                <span dangerouslySetInnerHTML={{ __html: breakEvenData.message }} />
-              ) : hasValidBreakEven ? (
-                <>
-                  The EV will have lower total emissions than the ICE vehicle after{' '}
-                  <strong>{formatLargeNumber(breakEvenKm)} km</strong>.
-                  <br />
-                  At average driving (15,000 km/year), this is approximately{' '}
-                  <strong>{(breakEvenKm / 15000).toFixed(1)} years</strong>.
-                </>
-              ) : (
-                <>
-                  The EV has lower total emissions from the start.
-                  <br />
-                  No break-even point needed!
-                </>
-              )}
-            </p>
-          </div>
-        </Card>
-
-        <div className="grid grid-2">
-          <Card>
-            <h4 className="mb-md">Cumulative Emissions Chart</h4>
-            {hasValidBreakEven ? (
-              renderCumulativeChart()
-            ) : (
-              <p className="text-center text-secondary">
-                The EV has lower emissions from the start, so no break-even chart is needed.
-              </p>
-            )}
-          </Card>
-          
-          <Card>
-            <h4 className="mb-md">Emissions Comparison</h4>
-            <div>
-              <div className="comparison-row">
-                <h5>EV: {evVehicle.brand} {evVehicle.model}</h5>
-                <div className="metric-row">
-                  <span>Manufacturing:</span>
-                  <span>{formatEmission(breakEvenData.ev_manufacturing_g_per_km)} g/km</span>
-                </div>
-                <div className="metric-row">
-                  <span>Operational:</span>
-                  <span>{formatEmission(breakEvenData.ev_operational_g_per_km)} g/km</span>
-                </div>
-                <div className="metric-row">
-                  <span>Total:</span>
-                  <span className="text-eco">{formatEmission(breakEvenData.ev_total_g_per_km)} g/km</span>
-                </div>
-              </div>
-              <hr style={{ margin: '1rem 0', borderColor: 'rgba(255,255,255,0.1)' }} />
-              <div className="comparison-row">
-                <h5>ICE: {iceVehicle.brand} {iceVehicle.model}</h5>
-                <div className="metric-row">
-                  <span>Manufacturing:</span>
-                  <span>{formatEmission(breakEvenData.ice_manufacturing_g_per_km)} g/km</span>
-                </div>
-                <div className="metric-row">
-                  <span>Operational:</span>
-                  <span>{formatEmission(breakEvenData.ice_operational_g_per_km)} g/km</span>
-                </div>
-                <div className="metric-row">
-                  <span>Total:</span>
-                  <span className="text-eco">{formatEmission(breakEvenData.ice_total_g_per_km)} g/km</span>
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
-      </section>
-    );
-  };
-
-  if (loading) {
-    return (
-      <div className="container">
-        <LoadingSpinner size="large" message="Loading vehicles and countries..." />
+      <div className="chart-container">
+        <div className="skeleton skeleton-chart-title" />
+        <div className="skeleton skeleton-chart" style={{ height: 300 }} />
       </div>
     );
   }
 
+  const fmtKg  = v => v == null ? "—" : v.toLocaleString(undefined, { maximumFractionDigits: 0 }) + " kg";
+  const fmtGkm = v => v == null ? "—" : v.toFixed(1) + " g/km";
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <main>
-      <div className="container">
-        <h1 className="text-center mb-md">EV vs ICE Break-Even Analysis</h1>
-        <p className="text-center text-secondary mb-lg">
-          Calculate the distance at which an EV's total emissions equal an ICE vehicle
-        </p>
+    <div className="container">
 
-        {error && (
-          <ErrorMessage 
-            message={error} 
-            onRetry={breakEvenData ? handleCalculate : fetchInitialData}
-            onDismiss={() => setError(null)}
+      <h1 className="text-center mb-lg">Lifecycle Break-Even Analysis</h1>
+      <p className="text-center mb-lg" style={{ color: "var(--color-text-secondary)" }}>
+        Compare any two powertrains — find where their cumulative lifecycle emissions cross
+      </p>
+
+      {/* ── VEHICLE PICKER ── */}
+      <section className="card mb-lg">
+        <h3 className="mb-md">Select Vehicles to Compare</h3>
+
+        {/* Search bar — identical to Compare */}
+        <div className="search-bar-wrapper">
+          <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search brand or model…"
+            value={search}
+            className="search-bar-input"
+            onChange={e => { setSearch(e.target.value); searchVehicles(e.target.value); }}
           />
-        )}
-
-        <div className="grid grid-2">
-          {/* EV Selection */}
-          <section className="card" aria-labelledby="ev-selection-heading">
-            <h2 id="ev-selection-heading" className="mb-md">Select Electric Vehicle</h2>
-            <Select
-              label="Brand"
-              value={evSelection.brand}
-              onChange={handleEvBrandChange}
-              options={getEvBrands()}
-              placeholder="Select Brand"
-            />
-            <Select
-              label="Model"
-              value={evSelection.model}
-              onChange={handleEvModelChange}
-              options={getModels('ev', evSelection.brand)}
-              placeholder="Select Model"
-              disabled={!evSelection.brand}
-            />
-            <Select
-              label="Year"
-              value={evSelection.year}
-              onChange={handleEvYearChange}
-              options={getYears('ev', evSelection.brand, evSelection.model)}
-              placeholder="Select Year"
-              disabled={!evSelection.model}
-            />
-            {evVehicle && (
-              <div className="vehicle-preview">
-                <div className="selected-vehicle">
-                  <h5>{evVehicle.brand} {evVehicle.model}</h5>
-                  <p>
-                    <Badge variant="success">{evVehicle.type}</Badge>{' '}
-                    {evVehicle.Year}
-                  </p>
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* ICE Selection */}
-          <section className="card" aria-labelledby="ice-selection-heading">
-            <h2 id="ice-selection-heading" className="mb-md">Select ICE Vehicle</h2>
-            <Select
-              label="Brand"
-              value={iceSelection.brand}
-              onChange={handleIceBrandChange}
-              options={getIceBrands()}
-              placeholder="Select Brand"
-            />
-            <Select
-              label="Model"
-              value={iceSelection.model}
-              onChange={handleIceModelChange}
-              options={getModels('ice', iceSelection.brand)}
-              placeholder="Select Model"
-              disabled={!iceSelection.brand}
-            />
-            <Select
-              label="Year"
-              value={iceSelection.year}
-              onChange={handleIceYearChange}
-              options={getYears('ice', iceSelection.brand, iceSelection.model)}
-              placeholder="Select Year"
-              disabled={!iceSelection.model}
-            />
-            {iceVehicle && (
-              <div className="vehicle-preview">
-                <div className="selected-vehicle">
-                  <h5>{iceVehicle.brand} {iceVehicle.model}</h5>
-                  <p>
-                    <Badge variant="danger">{iceVehicle.type}</Badge>{' '}
-                    {iceVehicle.Year}
-                  </p>
-                </div>
-              </div>
-            )}
-          </section>
+          {search && (
+            <button className="search-clear-btn" onClick={() => { setSearch(""); loadVehicles(); }} aria-label="Clear search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
         </div>
 
-        {/* Analysis Parameters */}
-        <section className="card mt-lg" aria-labelledby="params-heading">
-          <h2 id="params-heading" className="mb-md">Analysis Parameters</h2>
-          <div className="grid grid-3">
-            <Select
-              label="Country"
-              value={analysisParams.country}
-              onChange={(value) => setAnalysisParams({ ...analysisParams, country: value })}
-              options={countries.map(c => ({ value: c.code, label: c.name }))}
-            />
-            <div className="form-group">
-              <label className="select-label">Grid Year</label>
-              <input
-                type="number"
-                className="select-field"
-                value={analysisParams.gridYear}
-                onChange={(e) => setAnalysisParams({ ...analysisParams, gridYear: parseInt(e.target.value) })}
-              />
-            </div>
-            <div className="form-group">
-              <label className="select-label">&nbsp;</label>
-              <Button
-                variant="primary"
-                onClick={handleCalculate}
-                loading={calculating}
-                disabled={!evVehicle || !iceVehicle}
-                style={{ width: '100%' }}
-              >
-                Calculate Break-Even
-              </Button>
-            </div>
-          </div>
-        </section>
+        <div className="be-selectors mt-md">
+          <VehicleSelector
+            side="a"
+            vehicles={vehicles}
+            vehiclesLoading={vehiclesLoading}
+            value={selA}
+            onChange={setSelA}
+          />
 
-        {/* Results */}
-        {renderResults()}
-      </div>
-    </main>
+          <div className="be-vs-divider">VS</div>
+
+          <VehicleSelector
+            side="b"
+            vehicles={vehicles}
+            vehiclesLoading={vehiclesLoading}
+            value={selB}
+            onChange={setSelB}
+          />
+        </div>
+
+        {vehiclesLoadingMore && (
+          <div className="vehicles-loading-more">
+            <div className="vehicles-loading-bar" />
+            <span>Loading more vehicles…</span>
+          </div>
+        )}
+      </section>
+
+      {/* ── PARAMS + CALCULATE ── */}
+      <section className="card mb-lg">
+        <h3 className="mb-md">Analysis Parameters</h3>
+        <div className="filters">
+          <div className="filter-group">
+            <label>Country / Grid</label>
+            <select className="filter-select" value={country} onChange={e => setCountry(e.target.value)}>
+              {COUNTRIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </div>
+          <div className="filter-group">
+            <label>Grid Year</label>
+            <select className="filter-select" value={gridYear} onChange={e => setGridYear(Number(e.target.value))}>
+              {[2020, 2021, 2022, 2023, 2024].map(y => <option key={y}>{y}</option>)}
+            </select>
+          </div>
+          <div className="filter-group" style={{ alignSelf: "flex-end" }}>
+            <button
+              className="ai-generate-btn"
+              onClick={handleCalculate}
+              disabled={!vA || !vB || calculating}
+              style={{ width: "100%", justifyContent: "center" }}
+            >
+              {calculating ? "Calculating…" : "Calculate Break-Even"}
+            </button>
+          </div>
+        </div>
+        {calcError && (
+          <p style={{ color: "#FF5252", marginTop: "1rem", fontSize: "0.875rem" }}>⚠️ {calcError}</p>
+        )}
+      </section>
+
+      {/* ── RESULTS ── */}
+      {calculating && (
+        <section className="charts-section">
+          <SkeletonChart />
+        </section>
+      )}
+
+      {breakEvenData && !calculating && (() => {
+        const bkm    = breakEvenData.break_even_km;
+        const hasBkm = bkm != null && bkm > 0;
+        const aName  = `${breakEvenData.a_brand} ${breakEvenData.a_model}`;
+        const bName  = `${breakEvenData.b_brand} ${breakEvenData.b_model}`;
+        const aWins  = breakEvenData.a_operational_g_per_km <= breakEvenData.b_operational_g_per_km;
+
+        return (
+          <section className="charts-section">
+
+            {/* Hero */}
+            <div className="card mb-lg" style={{ textAlign: "center" }}>
+              <h3 className="mb-md">Break-Even Point</h3>
+              <div className="break-even-display">
+                <div className="break-even-value">
+                  <span className="big-number">
+                    {hasBkm ? bkm.toLocaleString(undefined, { maximumFractionDigits: 0 }) : bkm === 0 ? "0" : "—"}
+                  </span>
+                  <span className="unit">km</span>
+                </div>
+                <p style={{ marginTop: "1rem", color: "var(--color-text-secondary)", maxWidth: 560, margin: "1rem auto 0" }}>
+                  {breakEvenData.message
+                    ? breakEvenData.message
+                    : hasBkm
+                      ? <>
+                          After{" "}
+                          <strong>{bkm.toLocaleString(undefined, { maximumFractionDigits: 0 })} km</strong>{" "}
+                          {aWins ? aName : bName} has lower total lifecycle emissions.
+                          At 15 000 km/year that is approximately{" "}
+                          <strong>{(bkm / 15000).toFixed(1)} years</strong>.
+                        </>
+                      : `${aWins ? aName : bName} has lower emissions from the very start — no break-even needed!`}
+                </p>
+              </div>
+            </div>
+
+            {/* Line chart */}
+            <div className="chart-container">
+              <h3>Cumulative Lifecycle Emissions</h3>
+              {hasBkm && chartData ? (
+                <div style={{ position: "relative", height: "300px" }}>
+                  <Line data={chartData} options={chartOptions} />
+                </div>
+              ) : (
+                <p style={{ color: "var(--color-text-secondary)", padding: "2rem 0" }}>
+                  {bkm === 0
+                    ? `${aWins ? aName : bName} leads in both manufacturing and operational emissions — no crossover to plot.`
+                    : "No operational advantage — the lines never cross on this grid."}
+                </p>
+              )}
+            </div>
+
+            {/* Comparison cards — same style as Compare */}
+            <div className="grid grid-2">
+              {[
+                { key: "a", name: aName, v: vA },
+                { key: "b", name: bName, v: vB },
+              ].map(({ key, name, v }) => {
+                const pt = breakEvenData[`${key}_vehicle_type`];
+                return (
+                  <div key={key} className="card comparison-card">
+                    <h4>{name}</h4>
+                    <p style={{ marginBottom: "1rem" }}>
+                      <span className={`badge badge-${badgeClass(pt)}`}>{pt}</span>
+                      &nbsp;{breakEvenData[`${key}_year`]}
+                    </p>
+                    <div className="mt-md">
+                      <div className="emission-value">
+                        <span className="emission-label">Manufacturing (fixed, lifetime)</span>
+                        <span className="emission-number">{fmtKg(breakEvenData[`${key}_manufacturing_total_kg`])} CO₂</span>
+                      </div>
+                      <div className="emission-value">
+                        <span className="emission-label">Operational rate</span>
+                        <span className="emission-number">{fmtGkm(breakEvenData[`${key}_operational_g_per_km`])}</span>
+                      </div>
+                      <div className="emission-value">
+                        <span className="emission-label">Manufacturing rate</span>
+                        <span className="emission-number">{fmtGkm(breakEvenData[`${key}_manufacturing_g_per_km`])}</span>
+                      </div>
+                      <div className="emission-value emission-value--total">
+                        <span className="emission-label">Total lifecycle rate</span>
+                        <span className="emission-number emission-number--total">
+                          {fmtGkm(breakEvenData[`${key}_total_g_per_km`])}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Summary sentence */}
+            {hasBkm && (
+              <div className="card mt-lg" style={{ textAlign: "center", padding: "1.5rem" }}>
+                <p style={{ color: "var(--color-text-secondary)", fontSize: "0.875rem" }}>
+                  {aWins ? aName : bName} saves{" "}
+                  <strong style={{ color: "var(--color-eco-green)" }}>
+                    {fmtGkm(Math.abs(breakEvenData.operational_advantage_g_per_km))}
+                  </strong>{" "}
+                  per km operationally. Its manufacturing carbon premium of{" "}
+                  <strong>
+                    {fmtKg(Math.abs(
+                      (breakEvenData.a_manufacturing_total_kg ?? 0) -
+                      (breakEvenData.b_manufacturing_total_kg ?? 0)
+                    ))}
+                  </strong>{" "}
+                  CO₂ is repaid after{" "}
+                  <strong>{bkm.toLocaleString(undefined, { maximumFractionDigits: 0 })} km</strong>.
+                </p>
+              </div>
+            )}
+
+          </section>
+        );
+      })()}
+
+    </div>
   );
 }
-
-export default BreakEven;
