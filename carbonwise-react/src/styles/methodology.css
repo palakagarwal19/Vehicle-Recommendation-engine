@@ -1,111 +1,568 @@
-.validation-badge {
-  padding: var(--spacing-lg);
+/* ============================================================
+   methodology.css  —  CarbonWise Data & Methodology
+   Aesthetic: dark lab / technical report — monospaced data,
+   coloured source accents, formula code blocks.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --meth-bg:       #0b0d0c;
+  --meth-card:     #131613;
+  --meth-card2:    #191c19;
+  --meth-border:   rgba(255,255,255,0.07);
+  --meth-text:     #dde3de;
+  --meth-dim:      rgba(221,227,222,0.45);
+  --meth-eco:      #00C853;
+  --meth-mono:     'IBM Plex Mono', monospace;
+  --meth-sans:     'DM Sans', system-ui, sans-serif;
+  --meth-radius:   12px;
 }
 
-.badge-icon {
-  width: 80px;
-  height: 80px;
-  margin: 0 auto var(--spacing-md);
-  background-color: var(--color-eco-green);
+/* ── Base ──────────────────────────────────────────────────── */
+.meth-page {
+  background: var(--meth-bg);
+  color: var(--meth-text);
+  font-family: var(--meth-sans);
+  min-height: 100vh;
+}
+
+/* ── Hero ──────────────────────────────────────────────────── */
+.meth-hero {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(0,200,83,0.08) 0%, transparent 65%),
+    linear-gradient(180deg, #0f140f 0%, var(--meth-bg) 100%);
+  border-bottom: 1px solid var(--meth-border);
+  padding: 4rem 0 3rem;
+}
+
+.meth-hero-inner { text-align: center; }
+
+.meth-validated-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(0,200,83,0.1);
+  border: 1px solid rgba(0,200,83,0.25);
+  border-radius: 999px;
+  padding: 0.3rem 0.9rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--meth-eco);
+  letter-spacing: 0.04em;
+  margin-bottom: 1.5rem;
+  text-transform: uppercase;
+}
+
+.meth-validated-check {
+  width: 18px; height: 18px;
+  background: var(--meth-eco);
+  color: #001a0d;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.meth-hero-title {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin: 0 0 1rem;
+  color: #fff;
+}
+
+.meth-hero-sub {
+  max-width: 620px;
+  margin: 0 auto 2rem;
+  color: var(--meth-dim);
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+/* Source pills in hero */
+.meth-source-pills {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.meth-source-pill {
+  padding: 0.22rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-family: var(--meth-mono);
+  letter-spacing: 0.05em;
+  background: color-mix(in srgb, var(--pill-color) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pill-color) 35%, transparent);
+  color: var(--pill-color);
+}
+
+/* ── Content wrapper ───────────────────────────────────────── */
+.meth-content {
+  padding-top: 3rem;
+  padding-bottom: 5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3.5rem;
+}
+
+/* ── Lifecycle equation banner ─────────────────────────────── */
+.meth-equation-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 1rem 0.5rem;
+  background: var(--meth-card);
+  border: 1px solid var(--meth-border);
+  border-top: 2px solid rgba(0,200,83,0.3);
+  border-radius: var(--meth-radius);
+  padding: 2rem 2.5rem;
+}
+
+.meth-eq-term {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.5rem 1.25rem;
+}
+
+.meth-eq-term--result .meth-eq-value { color: var(--meth-eco); }
+
+.meth-eq-value {
+  font-family: var(--meth-mono);
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--meth-text);
+  line-height: 1;
+}
+
+.meth-eq-value sub {
+  font-size: 0.55em;
+  vertical-align: sub;
+  color: var(--meth-dim);
+}
+
+.meth-eq-label {
+  font-size: 0.68rem;
+  color: var(--meth-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.meth-eq-op {
+  font-family: var(--meth-mono);
+  font-size: 1.4rem;
+  color: var(--meth-eco);
+  font-weight: 300;
+  padding: 0 0.25rem;
+  align-self: flex-start;
+  padding-top: 0.6rem;
+}
+
+/* ── Section shell ─────────────────────────────────────────── */
+.meth-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0 0 1.5rem;
+  color: #fff;
+}
+
+.meth-section-num {
+  font-family: var(--meth-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--meth-eco);
+  background: rgba(0,200,83,0.1);
+  border: 1px solid rgba(0,200,83,0.2);
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  letter-spacing: 0.05em;
+}
+
+/* ── Data sources grid ─────────────────────────────────────── */
+.meth-sources-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.meth-source-card {
+  background: var(--meth-card);
+  border: 1px solid var(--meth-border);
+  border-left: 3px solid var(--src-color, #00C853);
+  border-radius: var(--meth-radius);
+  padding: 1.25rem;
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  cursor: pointer;
+}
+
+.meth-source-card:hover {
+  background: var(--meth-card2);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--src-color) 50%, transparent);
+}
+
+.meth-src-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.2rem;
+}
+
+.meth-src-abbr {
+  font-family: var(--meth-mono);
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.meth-src-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.meth-src-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.3;
+}
+
+.meth-src-org {
+  font-size: 0.72rem;
+  color: var(--meth-dim);
+  margin-bottom: 0.25rem;
+}
+
+.meth-src-purpose {
+  font-size: 0.8rem;
+  color: var(--meth-dim);
+  line-height: 1.55;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.meth-src-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+
+.meth-src-field {
+  font-family: var(--meth-mono);
+  font-size: 0.65rem;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  color: rgba(255,255,255,0.6);
+}
+
+.meth-src-link {
+  font-size: 0.72rem;
+  color: var(--src-color, var(--meth-eco));
+  font-weight: 600;
+  margin-top: auto;
+}
+
+/* ── Accordion ─────────────────────────────────────────────── */
+.meth-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--meth-border);
+  border-radius: var(--meth-radius);
+  overflow: hidden;
+}
+
+.meth-accordion-item {
+  border-bottom: 1px solid var(--meth-border);
+}
+.meth-accordion-item:last-child { border-bottom: none; }
+
+.meth-accordion-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.1rem 1.5rem;
+  background: var(--meth-card);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+  color: var(--meth-text);
+  font-family: var(--meth-sans);
+}
+
+.meth-accordion-trigger:hover       { background: var(--meth-card2); }
+.meth-accordion-item--open .meth-accordion-trigger {
+  background: var(--meth-card2);
+  border-bottom: 1px solid rgba(0,200,83,0.15);
+}
+
+.meth-acc-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+}
+
+.meth-acc-title-wrap { flex: 1; }
+
+.meth-acc-title {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.meth-acc-sub {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--meth-dim);
+  margin-top: 0.1rem;
+  font-family: var(--meth-mono);
+}
+
+.meth-acc-caret {
+  font-size: 1.2rem;
+  color: var(--meth-dim);
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+.meth-acc-caret--open { transform: rotate(90deg); color: var(--meth-eco); }
+
+/* Accordion body */
+.meth-accordion-body {
+  padding: 1.5rem;
+  background: var(--meth-card2);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.meth-body-text {
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--meth-dim);
+  margin: 0;
+}
+
+/* Formula block */
+.meth-formula-block {
+  background: #0d1110;
+  border: 1px solid rgba(0,200,83,0.15);
+  border-left: 3px solid var(--meth-eco);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.meth-formula-label {
+  padding: 0.5rem 1rem;
+  background: rgba(0,200,83,0.07);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--meth-eco);
+  border-bottom: 1px solid rgba(0,200,83,0.1);
+}
+
+.meth-formula-expr {
+  font-family: var(--meth-mono);
+  font-size: 0.85rem;
+  color: #a8f0c8;
+  padding: 1rem;
+  margin: 0;
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.7;
+}
+
+.meth-formula-vars {
+  border-top: 1px solid rgba(255,255,255,0.05);
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.meth-var-row {
+  display: grid;
+  grid-template-columns: 140px 1fr auto;
+  gap: 0.75rem;
+  align-items: baseline;
+  font-size: 0.8rem;
+}
+
+.meth-var-sym {
+  font-family: var(--meth-mono);
+  color: #a8f0c8;
+  font-size: 0.78rem;
+}
+
+.meth-var-desc { color: var(--meth-dim); }
+
+.meth-var-unit {
+  font-family: var(--meth-mono);
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.25);
+  white-space: nowrap;
+}
+
+/* Note */
+.meth-note {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  background: rgba(255,200,0,0.05);
+  border: 1px solid rgba(255,200,0,0.12);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.82rem;
+  color: rgba(255,220,100,0.8);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.meth-note-icon {
+  width: 18px;
+  height: 18px;
+  background: rgba(255,200,0,0.15);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 3rem;
-  color: var(--color-primary-black);
-  font-weight: var(--font-weight-bold);
+  font-style: normal;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  margin-top: 0.05rem;
 }
 
-.accordion {
+/* ── Assumptions table ─────────────────────────────────────── */
+.meth-assumptions-table {
+  background: var(--meth-card);
+  border: 1px solid var(--meth-border);
+  border-radius: var(--meth-radius);
+  overflow: hidden;
+}
+
+.meth-table-head {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 2fr;
+  gap: 1rem;
+  padding: 0.65rem 1.25rem;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--meth-border);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--meth-dim);
+}
+
+.meth-table-row {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 2fr;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  align-items: center;
+  transition: background 0.1s;
+}
+.meth-table-row:last-child { border-bottom: none; }
+.meth-table-row:hover { background: var(--meth-card2); }
+
+.meth-table-param { font-size: 0.87rem; font-weight: 500; color: var(--meth-text); }
+.meth-table-value {
+  font-family: var(--meth-mono);
+  font-size: 0.8rem;
+  color: var(--meth-eco);
+  background: rgba(0,200,83,0.07);
+  border: 1px solid rgba(0,200,83,0.15);
+  border-radius: 5px;
+  padding: 0.15rem 0.45rem;
+  white-space: nowrap;
+}
+.meth-table-basis { font-size: 0.78rem; color: var(--meth-dim); line-height: 1.45; }
+
+/* ── Output metrics ────────────────────────────────────────── */
+.meth-outputs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.meth-output-card {
+  background: var(--meth-card);
+  border: 1px solid var(--meth-border);
+  border-radius: var(--meth-radius);
+  padding: 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  gap: 0.35rem;
+  transition: background 0.15s, transform 0.15s;
 }
+.meth-output-card:hover { background: var(--meth-card2); transform: translateY(-1px); }
 
-.accordion-item {
-  background-color: rgba(255, 255, 255, 0.05);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
+.meth-output-icon { font-size: 1.4rem; }
+.meth-output-label { font-size: 0.9rem; font-weight: 600; color: #fff; }
+.meth-output-desc  { font-size: 0.78rem; color: var(--meth-dim); margin: 0; line-height: 1.55; }
 
-.accordion-header {
-  width: 100%;
-  padding: var(--spacing-md);
+/* ── Footer note ───────────────────────────────────────────── */
+.meth-footer-note {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: none;
-  color: var(--color-text-primary);
-  font-size: 1.125rem;
-  font-weight: var(--font-weight-bold);
-  text-align: left;
-  transition: all var(--transition-fast);
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: var(--meth-card);
+  border: 1px solid var(--meth-border);
+  border-radius: var(--meth-radius);
+  padding: 1.25rem 1.5rem;
+  font-size: 0.83rem;
+  color: var(--meth-dim);
+  line-height: 1.65;
 }
 
-.accordion-header:hover {
-  background-color: rgba(0, 200, 83, 0.1);
-}
+.meth-footer-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 0.05rem; }
 
-.accordion-icon {
-  font-size: 1.5rem;
-  color: var(--color-eco-green);
-  transition: transform var(--transition-fast);
-}
+/* ── Responsive ────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .meth-equation-banner { gap: 0.5rem; padding: 1.25rem; }
+  .meth-eq-value        { font-size: 1.2rem; }
 
-.accordion-item.active .accordion-icon {
-  transform: rotate(45deg);
-}
+  .meth-var-row {
+    grid-template-columns: 110px 1fr;
+    gap: 0.5rem;
+  }
+  .meth-var-unit { display: none; }
 
-.accordion-content {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height var(--transition-normal);
-}
+  .meth-table-head,
+  .meth-table-row { grid-template-columns: 1fr 1fr; }
+  .meth-table-basis { display: none; }
 
-.accordion-item.active .accordion-content {
-  max-height: 1000px;
-  padding: 0 var(--spacing-md) var(--spacing-md);
-}
-
-.accordion-content h4 {
-  color: var(--color-eco-green);
-  margin-top: var(--spacing-sm);
-  margin-bottom: 0.5rem;
-}
-
-.accordion-content ul {
-  list-style: disc;
-  padding-left: var(--spacing-md);
-  color: var(--color-text-secondary);
-}
-
-.accordion-content li {
-  margin-bottom: 0.5rem;
-}
-
-.source-list {
-  list-style: none;
-  padding: 0;
-}
-
-.source-list li {
-  margin-bottom: 0.5rem;
-  padding-left: var(--spacing-md);
-  position: relative;
-}
-
-.source-list li::before {
-  content: "→";
-  position: absolute;
-  left: 0;
-  color: var(--color-eco-green);
-}
-
-.source-list a {
-  color: var(--color-eco-green);
-  transition: color var(--transition-fast);
-}
-
-.source-list a:hover {
-  color: var(--color-soft-green);
+  .meth-accordion-trigger { padding: 0.9rem 1rem; }
+  .meth-accordion-body    { padding: 1rem; }
 }

@@ -19,55 +19,80 @@ ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Tooltip,
 const API = "http://localhost:5000";
 
 const COUNTRIES = [
-  { value: "US", label: "United States" },
-  { value: "DE", label: "Germany" },
-  { value: "FR", label: "France" },
-  { value: "UK", label: "United Kingdom" },
-  { value: "CN", label: "China" },
-  { value: "JP", label: "Japan" },
-  { value: "IN", label: "India" },
+  { value: "USA", label: "United States" },
+  { value: "DEU", label: "Germany" },
+  { value: "FRA", label: "France" },
+  { value: "GBR", label: "United Kingdom" },
+  { value: "CHN", label: "China" },
+  { value: "JPN", label: "Japan" },
+  { value: "IND", label: "India" },
 ];
 
-// All powertrain types — matches engine.py
-const POWERTRAIN_TYPES = ["EV", "BEV", "HEV", "PHEV", "ICE"];
+const POWERTRAIN_TYPES = ["EV", "HEV", "PHEV", "ICE"];
 
-// Badge CSS class per type
 const badgeClass = t => {
   if (!t) return "";
   const m = { BEV: "bev", EV: "bev", HEV: "hev", PHEV: "phev", ICE: "ice" };
   return m[t.toUpperCase()] ?? t.toLowerCase();
 };
 
-// ── Selector panel — pure/stateless, parent owns all state ──────────────────
+// Small inline spinner — size-capped, never fills container
+function MiniSpinner() {
+  return (
+    <span style={{
+      display: "inline-block", width: 16, height: 16,
+      border: "2px solid rgba(0,200,83,0.2)",
+      borderTopColor: "#00C853", borderRadius: "50%",
+      animation: "be-spin 0.7s linear infinite",
+      verticalAlign: "middle", marginRight: 6,
+    }} />
+  );
+}
+
+// ── Selector panel ────────────────────────────────────────────────────────────
 function VehicleSelector({ side, vehicles, vehiclesLoading, sel, setSel }) {
   const { powertrain, brand, model, year } = sel;
 
   const pool = useMemo(() => {
     if (!powertrain) return vehicles;
-    if (powertrain === "EV") return vehicles.filter(v => v.vehicle_type === "EV" || v.vehicle_type === "BEV");
-    return vehicles.filter(v => v.vehicle_type === powertrain);
+    if (powertrain === "EV") return vehicles.filter(v =>
+      ["EV", "BEV"].includes((v.vehicle_type || "").toUpperCase())
+    );
+    return vehicles.filter(v =>
+      (v.vehicle_type || "").toUpperCase() === powertrain
+    );
   }, [powertrain, vehicles]);
 
-  const brands = useMemo(() => [...new Set(pool.map(v => v.brand))].sort(), [pool]);
+  const brands = useMemo(() =>
+    [...new Set(pool.map(v => v.brand).filter(Boolean))].sort(),
+    [pool]);
 
   const models = useMemo(() =>
-    brand ? [...new Set(pool.filter(v => v.brand === brand).map(v => v.model))].sort() : [],
+    brand
+      ? [...new Set(pool.filter(v => v.brand === brand).map(v => v.model).filter(Boolean))].sort()
+      : [],
     [brand, pool]);
 
   const years = useMemo(() =>
-    (brand && model)
-      ? [...new Set(pool.filter(v => v.brand === brand && v.model === model).map(v => v.year))].sort((a, b) => b - a)
+    brand && model
+      ? [...new Set(
+          pool.filter(v => v.brand === brand && v.model === model)
+              .map(v => v.year ?? v.Year)
+              .filter(Boolean)
+        )].sort((a, b) => b - a)
       : [],
     [brand, model, pool]);
 
-  // Resolved vehicle — computed here, stored in parent via setSel
   const resolved = useMemo(() =>
-    (brand && model && year)
-      ? pool.find(v => v.brand === brand && v.model === model && String(v.year) === String(year)) ?? null
+    brand && model && year
+      ? pool.find(v =>
+          v.brand === brand &&
+          v.model === model &&
+          String(v.year ?? v.Year) === String(year)
+        ) ?? null
       : null,
     [brand, model, year, pool]);
 
-  // Keep parent in sync — only when resolved actually changes
   const prevRef = useRef(undefined);
   useEffect(() => {
     if (resolved !== prevRef.current) {
@@ -76,9 +101,7 @@ function VehicleSelector({ side, vehicles, vehiclesLoading, sel, setSel }) {
     }
   }, [resolved, setSel]);
 
-  // Patch helper — always uses functional setSel to avoid stale closure
   const patch = obj => setSel(s => ({ ...s, ...obj }));
-
   const label = side === "a" ? "Vehicle A" : "Vehicle B";
 
   return (
@@ -90,8 +113,8 @@ function VehicleSelector({ side, vehicles, vehiclesLoading, sel, setSel }) {
         &nbsp;{label}
       </h4>
 
-      {/* Powertrain type pills */}
-      <div className="be-type-pills mb-md">
+      {/* Powertrain pills */}
+      <div className="be-type-pills">
         {POWERTRAIN_TYPES.map(pt => (
           <button
             key={pt}
@@ -117,10 +140,10 @@ function VehicleSelector({ side, vehicles, vehiclesLoading, sel, setSel }) {
             value={brand}
             onChange={e => patch({ brand: e.target.value, model: "", year: "", resolved: null })}
           >
-            <option value="">All Brands</option>
-            {vehiclesLoading
-              ? <option disabled>Loading…</option>
-              : brands.map(b => <option key={b}>{b}</option>)}
+            <option value="">
+              {vehiclesLoading ? "Loading…" : `All Brands (${brands.length})`}
+            </option>
+            {brands.map(b => <option key={b}>{b}</option>)}
           </select>
         </div>
 
@@ -158,7 +181,7 @@ function VehicleSelector({ side, vehicles, vehiclesLoading, sel, setSel }) {
             <span className={`badge badge-${badgeClass(resolved.vehicle_type)}`}>
               {resolved.vehicle_type}
             </span>
-            &nbsp;{resolved.year}
+            &nbsp;{resolved.year ?? resolved.Year}
           </p>
         </div>
       )}
@@ -166,91 +189,56 @@ function VehicleSelector({ side, vehicles, vehiclesLoading, sel, setSel }) {
   );
 }
 
-// ── Main component ───────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────────
 export default function BreakEven() {
-
-  // Vehicle list — same paginated loading as Compare
   const [vehicles,            setVehicles]            = useState([]);
   const [vehiclesLoading,     setVehiclesLoading]     = useState(true);
   const [vehiclesLoadingMore, setVehiclesLoadingMore] = useState(false);
+  const [vehicleCount,        setVehicleCount]        = useState(0);
   const [search,              setSearch]              = useState("");
 
-  // Vehicle A and B selection state
   const [selA, setSelA] = useState({ powertrain: "EV",  brand: "", model: "", year: "", resolved: null });
   const [selB, setSelB] = useState({ powertrain: "ICE", brand: "", model: "", year: "", resolved: null });
 
-  // Params / results
-  const [country,       setCountry]       = useState("US");
+  const [country,       setCountry]       = useState("USA");
   const [gridYear,      setGridYear]      = useState(2023);
   const [breakEvenData, setBreakEvenData] = useState(null);
   const [calculating,   setCalculating]   = useState(false);
   const [calcError,     setCalcError]     = useState(null);
 
-  // ── Load vehicles ────────────────────────────────────────────────────────
-  // Phase 1 (instant):     4 parallel requests — 50 of each type → UI ready
-  // Phase 2 (background):  stream remaining pages per type, merging as they land
+  // ── Load vehicles: page 1 immediately, background pages after ─────────────
   useEffect(() => { loadVehicles(); }, []);
 
   async function loadVehicles() {
     setVehiclesLoading(true);
     setVehicles([]);
 
-    const TYPES    = ["EV", "HEV", "PHEV", "ICE"];
-    const FIRST_N  = 50;   // per type shown immediately
-    const BG_LIMIT = 200;  // page size for background pages
-
-    // ── Dedup helper ────────────────────────────────────────────────────────
-    const key = v => `${v.brand}|${v.model}|${v.year}`;
-
     try {
-      // ── Phase 1: 4 requests fired simultaneously ──────────────────────────
-      const phase1 = await Promise.all(
-        TYPES.map(t =>
-          fetch(`${API}/vehicles?page=1&limit=${FIRST_N}&vehicle_type=${t}`)
-            .then(r => r.json())
-            .then(j => ({
-              batch:      Array.isArray(j) ? j : (j.vehicles ?? []),
-              total:      j.total      ?? 0,
-              totalPages: Math.ceil((j.total ?? 0) / BG_LIMIT),
-              type:       t,
-            }))
-        )
-      );
+      // Page 1 — show something immediately
+      // Use /vehicles without vehicle_type filter for maximum compatibility
+      const r1   = await fetch(`${API}/vehicles?page=1&limit=100`);
+      const j1   = await r1.json();
+      const batch1 = Array.isArray(j1) ? j1 : (j1.vehicles ?? []);
+      const total  = j1.total ?? batch1.length;
 
-      // Merge initial batches, deduplicate (EV/BEV may overlap)
-      const seen    = new Set();
-      const initial = [];
-      for (const { batch } of phase1) {
-        for (const v of batch) {
-          const k = key(v);
-          if (!seen.has(k)) { seen.add(k); initial.push(v); }
-        }
-      }
-      setVehicles(initial);
-      setVehiclesLoading(false);
+      setVehicles(batch1);
+      setVehicleCount(total);
+      setVehiclesLoading(false);   // ← UI unlocks here regardless of bg loading
 
-      // ── Phase 2: background pages, type by type, page by page ─────────────
-      const needsMore = phase1.some(({ total }) => total > FIRST_N);
-      if (!needsMore) return;
+      // Background: remaining pages
+      if (total > 100) {
+        setVehiclesLoadingMore(true);
+        const totalPages = Math.ceil(total / 200);
 
-      setVehiclesLoadingMore(true);
-
-      for (const { type, total } of phase1) {
-        if (total <= FIRST_N) continue;
-
-        // Pages 2, 3, … at BG_LIMIT each (page 1 already covered FIRST_N rows)
-        const bgPages = Math.ceil((total - FIRST_N) / BG_LIMIT);
-
-        for (let p = 0; p < bgPages; p++) {
-          const res  = await fetch(
-            `${API}/vehicles?page=${p + 2}&limit=${BG_LIMIT}&vehicle_type=${type}`
-          );
-          const json = await res.json();
-          const batch = Array.isArray(json) ? json : (json.vehicles ?? []);
+        for (let p = 2; p <= Math.min(totalPages, 20); p++) {
+          const r  = await fetch(`${API}/vehicles?page=${p}&limit=200`);
+          const j  = await r.json();
+          const batch = Array.isArray(j) ? j : (j.vehicles ?? []);
+          if (!batch.length) break;
 
           setVehicles(prev => {
-            const existingKeys = new Set(prev.map(key));
-            const fresh = batch.filter(v => !existingKeys.has(key(v)));
+            const keys = new Set(prev.map(v => `${v.brand}|${v.model}|${v.year ?? v.Year}`));
+            const fresh = batch.filter(v => !keys.has(`${v.brand}|${v.model}|${v.year ?? v.Year}`));
             return fresh.length ? [...prev, ...fresh] : prev;
           });
         }
@@ -265,14 +253,19 @@ export default function BreakEven() {
 
   async function searchVehicles(query) {
     if (query.length < 2) { loadVehicles(); return; }
-    setVehiclesLoading(true);
-    const res  = await fetch(`${API}/vehicle-search?q=${query}`);
-    const data = await res.json();
-    setVehicles(data);
-    setVehiclesLoading(false);
+    try {
+      setVehiclesLoading(true);
+      const res  = await fetch(`${API}/vehicle-search?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      setVehicles(Array.isArray(data) ? data : []);
+    } catch {
+      // ignore search errors
+    } finally {
+      setVehiclesLoading(false);
+    }
   }
 
-  // ── Calculate ────────────────────────────────────────────────────────────
+  // ── Calculate ─────────────────────────────────────────────────────────────
   const vA = selA.resolved;
   const vB = selB.resolved;
 
@@ -286,8 +279,8 @@ export default function BreakEven() {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          vehicle_a: { brand: vA.brand, model: vA.model, year: vA.year },
-          vehicle_b: { brand: vB.brand, model: vB.model, year: vB.year },
+          vehicle_a: { brand: vA.brand, model: vA.model, year: vA.year ?? vA.Year },
+          vehicle_b: { brand: vB.brand, model: vB.model, year: vB.year ?? vB.Year },
           country,
           grid_year: gridYear,
         })
@@ -302,15 +295,14 @@ export default function BreakEven() {
     }
   }
 
-  // ── Chart data ───────────────────────────────────────────────────────────
+  // ── Chart ─────────────────────────────────────────────────────────────────
   const chartData = useMemo(() => {
     if (!breakEvenData) return null;
     const bkm = breakEvenData.break_even_km;
     if (!bkm || bkm <= 0) return null;
 
     const maxKm = Math.max(bkm * 2, 300_000);
-    const N     = 60;
-    const step  = maxKm / N;
+    const N = 60, step = maxKm / N;
     const labels = [], aPts = [], bPts = [];
     const mA = breakEvenData.a_manufacturing_total_kg;
     const mB = breakEvenData.b_manufacturing_total_kg;
@@ -326,57 +318,45 @@ export default function BreakEven() {
     const bY   = +(mA + breakEvenData.a_operational_g_per_km * bkm / 1000).toFixed(1);
     const bkPts = labels.map((_, i) => (i === bIdx ? bY : null));
 
-    const aLabel = `${breakEvenData.a_brand} ${breakEvenData.a_model} (${breakEvenData.a_vehicle_type})`;
-    const bLabel = `${breakEvenData.b_brand} ${breakEvenData.b_model} (${breakEvenData.b_vehicle_type})`;
-
-    // Colour Vehicle A green (lower operational), B red
     const aIsLower = breakEvenData.a_operational_g_per_km <= breakEvenData.b_operational_g_per_km;
     const colA = aIsLower ? "#00C853" : "#FF5252";
     const colB = aIsLower ? "#FF5252" : "#00C853";
+    const aLabel = `${breakEvenData.a_brand} ${breakEvenData.a_model} (${breakEvenData.a_vehicle_type})`;
+    const bLabel = `${breakEvenData.b_brand} ${breakEvenData.b_model} (${breakEvenData.b_vehicle_type})`;
 
     return {
       labels,
       datasets: [
         {
-          label: aLabel,
-          data: aPts,
-          borderColor: colA,
+          label: aLabel, data: aPts, borderColor: colA,
           backgroundColor: colA === "#00C853" ? "rgba(0,200,83,0.08)" : "rgba(255,82,82,0.08)",
           borderWidth: 2, tension: 0.3, fill: true, pointRadius: 0, pointHoverRadius: 4,
         },
         {
-          label: bLabel,
-          data: bPts,
-          borderColor: colB,
+          label: bLabel, data: bPts, borderColor: colB,
           backgroundColor: colB === "#00C853" ? "rgba(0,200,83,0.08)" : "rgba(255,82,82,0.08)",
           borderWidth: 2, tension: 0.3, fill: true, pointRadius: 0, pointHoverRadius: 4,
         },
         {
-          label: "Break-Even Point",
-          data: bkPts,
-          showLine: false,
-          pointRadius: labels.map((_, i) => (i === bIdx ? 9 : 0)),
+          label: "Break-Even Point", data: bkPts, showLine: false,
+          pointRadius: labels.map((_, i) => i === bIdx ? 9 : 0),
           pointHoverRadius: 11,
-          pointBackgroundColor: "#FFD700",
-          pointBorderColor: "#FFA000",
-          pointBorderWidth: 2,
-          borderColor: "transparent",
-          backgroundColor: "transparent",
+          pointBackgroundColor: "#FFD700", pointBorderColor: "#FFA000", pointBorderWidth: 2,
+          borderColor: "transparent", backgroundColor: "transparent",
         },
       ],
     };
   }, [breakEvenData]);
 
   const chartOptions = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false,
     plugins: {
       legend: { position: "top" },
       tooltip: {
         filter: item => item.parsed.y !== null,
         callbacks: {
           title:  items => `${items[0].label}k km`,
-          label:  ctx   => {
+          label:  ctx => {
             if (ctx.datasetIndex === 2)
               return `Break-Even ≈ ${breakEvenData?.break_even_km?.toLocaleString(undefined, { maximumFractionDigits: 0 })} km`;
             return `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString(undefined, { maximumFractionDigits: 0 })} kg CO₂`;
@@ -390,33 +370,36 @@ export default function BreakEven() {
     }
   }), [breakEvenData]);
 
-  // ── Skeletons — same as Compare ──────────────────────────────────────────
-  function SkeletonChart() {
-    return (
-      <div className="chart-container">
-        <div className="skeleton skeleton-chart-title" />
-        <div className="skeleton skeleton-chart" style={{ height: 300 }} />
-      </div>
-    );
-  }
-
   const fmtKg  = v => v == null ? "—" : v.toLocaleString(undefined, { maximumFractionDigits: 0 }) + " kg";
   const fmtGkm = v => v == null ? "—" : v.toFixed(1) + " g/km";
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="container">
+      <style>{`@keyframes be-spin { to { transform: rotate(360deg); } }`}</style>
 
       <h1 className="text-center mb-lg">Lifecycle Break-Even Analysis</h1>
       <p className="text-center mb-lg" style={{ color: "var(--color-text-secondary)" }}>
         Compare any two powertrains — find where their cumulative lifecycle emissions cross
       </p>
 
-      {/* ── VEHICLE PICKER ── */}
+      {/* ── Vehicle picker ── */}
       <section className="card mb-lg">
-        <h3 className="mb-md">Select Vehicles to Compare</h3>
+        <h3 className="mb-md">
+          Select Vehicles to Compare
+          {vehiclesLoading && <><MiniSpinner /><span style={{ fontSize: "0.8rem", opacity: 0.5 }}> loading vehicles…</span></>}
+          {!vehiclesLoading && vehiclesLoadingMore && (
+            <span style={{ fontSize: "0.78rem", opacity: 0.4, marginLeft: 8 }}>
+              <MiniSpinner /> loading more…
+            </span>
+          )}
+          {!vehiclesLoading && !vehiclesLoadingMore && vehicles.length > 0 && (
+            <span style={{ fontSize: "0.75rem", opacity: 0.35, marginLeft: 8 }}>
+              {vehicles.length.toLocaleString()} vehicles
+            </span>
+          )}
+        </h3>
 
-        {/* Search bar — identical to Compare */}
         <div className="search-bar-wrapper">
           <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -438,34 +421,13 @@ export default function BreakEven() {
         </div>
 
         <div className="be-selectors mt-md">
-          <VehicleSelector
-            side="a"
-            vehicles={vehicles}
-            vehiclesLoading={vehiclesLoading}
-            sel={selA}
-            setSel={setSelA}
-          />
-
+          <VehicleSelector side="a" vehicles={vehicles} vehiclesLoading={vehiclesLoading} sel={selA} setSel={setSelA} />
           <div className="be-vs-divider">VS</div>
-
-          <VehicleSelector
-            side="b"
-            vehicles={vehicles}
-            vehiclesLoading={vehiclesLoading}
-            sel={selB}
-            setSel={setSelB}
-          />
+          <VehicleSelector side="b" vehicles={vehicles} vehiclesLoading={vehiclesLoading} sel={selB} setSel={setSelB} />
         </div>
-
-        {vehiclesLoadingMore && (
-          <div className="vehicles-loading-more">
-            <div className="vehicles-loading-bar" />
-            <span>Loading more vehicles…</span>
-          </div>
-        )}
       </section>
 
-      {/* ── PARAMS + CALCULATE ── */}
+      {/* ── Params ── */}
       <section className="card mb-lg">
         <h3 className="mb-md">Analysis Parameters</h3>
         <div className="filters">
@@ -488,7 +450,7 @@ export default function BreakEven() {
               disabled={!vA || !vB || calculating}
               style={{ width: "100%", justifyContent: "center" }}
             >
-              {calculating ? "Calculating…" : "Calculate Break-Even"}
+              {calculating ? <><MiniSpinner />Calculating…</> : "Calculate Break-Even"}
             </button>
           </div>
         </div>
@@ -497,15 +459,9 @@ export default function BreakEven() {
         )}
       </section>
 
-      {/* ── RESULTS ── */}
-      {calculating && (
-        <section className="charts-section">
-          <SkeletonChart />
-        </section>
-      )}
-
+      {/* ── Results ── */}
       {breakEvenData && !calculating && (() => {
-        const bkm    = breakEvenData.break_even_km;
+        const bkm   = breakEvenData.break_even_km;
         const hasBkm = bkm != null && bkm > 0;
         const aName  = `${breakEvenData.a_brand} ${breakEvenData.a_model}`;
         const bName  = `${breakEvenData.b_brand} ${breakEvenData.b_model}`;
@@ -513,14 +469,15 @@ export default function BreakEven() {
 
         return (
           <section className="charts-section">
-
             {/* Hero */}
             <div className="card mb-lg" style={{ textAlign: "center" }}>
               <h3 className="mb-md">Break-Even Point</h3>
               <div className="break-even-display">
                 <div className="break-even-value">
                   <span className="big-number">
-                    {hasBkm ? bkm.toLocaleString(undefined, { maximumFractionDigits: 0 }) : bkm === 0 ? "0" : "—"}
+                    {hasBkm
+                      ? bkm.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                      : bkm === 0 ? "0" : "—"}
                   </span>
                   <span className="unit">km</span>
                 </div>
@@ -528,19 +485,13 @@ export default function BreakEven() {
                   {breakEvenData.message
                     ? breakEvenData.message
                     : hasBkm
-                      ? <>
-                          After{" "}
-                          <strong>{bkm.toLocaleString(undefined, { maximumFractionDigits: 0 })} km</strong>{" "}
-                          {aWins ? aName : bName} has lower total lifecycle emissions.
-                          At 15 000 km/year that is approximately{" "}
-                          <strong>{(bkm / 15000).toFixed(1)} years</strong>.
-                        </>
-                      : `${aWins ? aName : bName} has lower emissions from the very start — no break-even needed!`}
+                      ? <>After <strong>{bkm.toLocaleString(undefined, { maximumFractionDigits: 0 })} km</strong> {aWins ? aName : bName} has lower total lifecycle emissions. At 15 000 km/year that is approximately <strong>{(bkm / 15000).toFixed(1)} years</strong>.</>
+                      : `${aWins ? aName : bName} has lower emissions from the very start — no break-even needed.`}
                 </p>
               </div>
             </div>
 
-            {/* Line chart */}
+            {/* Chart */}
             <div className="chart-container">
               <h3>Cumulative Lifecycle Emissions</h3>
               {hasBkm && chartData ? (
@@ -549,19 +500,14 @@ export default function BreakEven() {
                 </div>
               ) : (
                 <p style={{ color: "var(--color-text-secondary)", padding: "2rem 0" }}>
-                  {bkm === 0
-                    ? `${aWins ? aName : bName} leads in both manufacturing and operational emissions — no crossover to plot.`
-                    : "No operational advantage — the lines never cross on this grid."}
+                  No operational advantage — the lines never cross on this grid.
                 </p>
               )}
             </div>
 
-            {/* Comparison cards — same style as Compare */}
+            {/* Cards */}
             <div className="grid grid-2">
-              {[
-                { key: "a", name: aName, v: vA },
-                { key: "b", name: bName, v: vB },
-              ].map(({ key, name, v }) => {
+              {[{ key: "a", name: aName }, { key: "b", name: bName }].map(({ key, name }) => {
                 const pt = breakEvenData[`${key}_vehicle_type`];
                 return (
                   <div key={key} className="card comparison-card">
@@ -572,8 +518,8 @@ export default function BreakEven() {
                     </p>
                     <div className="mt-md">
                       <div className="emission-value">
-                        <span className="emission-label">Manufacturing (fixed, lifetime)</span>
-                        <span className="emission-number">{fmtKg(breakEvenData[`${key}_manufacturing_total_kg`])} CO₂</span>
+                        <span className="emission-label">Manufacturing (lifetime total)</span>
+                        <span className="emission-number">{fmtKg(breakEvenData[`${key}_manufacturing_total_kg`])}</span>
                       </div>
                       <div className="emission-value">
                         <span className="emission-label">Operational rate</span>
@@ -595,7 +541,6 @@ export default function BreakEven() {
               })}
             </div>
 
-            {/* Summary sentence */}
             {hasBkm && (
               <div className="card mt-lg" style={{ textAlign: "center", padding: "1.5rem" }}>
                 <p style={{ color: "var(--color-text-secondary)", fontSize: "0.875rem" }}>
@@ -604,22 +549,15 @@ export default function BreakEven() {
                     {fmtGkm(Math.abs(breakEvenData.operational_advantage_g_per_km))}
                   </strong>{" "}
                   per km operationally. Its manufacturing carbon premium of{" "}
-                  <strong>
-                    {fmtKg(Math.abs(
-                      (breakEvenData.a_manufacturing_total_kg ?? 0) -
-                      (breakEvenData.b_manufacturing_total_kg ?? 0)
-                    ))}
-                  </strong>{" "}
-                  CO₂ is repaid after{" "}
+                  <strong>{fmtKg(Math.abs((breakEvenData.a_manufacturing_total_kg ?? 0) - (breakEvenData.b_manufacturing_total_kg ?? 0)))}</strong>{" "}
+                  is repaid after{" "}
                   <strong>{bkm.toLocaleString(undefined, { maximumFractionDigits: 0 })} km</strong>.
                 </p>
               </div>
             )}
-
           </section>
         );
       })()}
-
     </div>
   );
 }

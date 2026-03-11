@@ -332,7 +332,7 @@ class CarbonWiseAPI {
    * @returns {Promise<object>} Grid data
    */
   async getGridData() {
-    return this.request('/grid-data');
+    return this.request('/grid');
   }
 }
 

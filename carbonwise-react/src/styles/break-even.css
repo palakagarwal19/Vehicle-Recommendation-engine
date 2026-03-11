@@ -130,3 +130,56 @@
   color: var(--color-text-secondary, #aaa);
   letter-spacing: 0.05em;
 }
+/* ── Search bar ─────────────────────────────────────────────── */
+.search-bar-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.75rem;
+  width: 16px;
+  height: 16px;
+  color: var(--color-text-secondary, #888);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.search-bar-input {
+  width: 100%;
+  padding: 0.55rem 2.5rem 0.55rem 2.25rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--color-text-primary, #fff);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.search-bar-input:focus {
+  border-color: rgba(0, 200, 83, 0.4);
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: 0.6rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary, #888);
+  padding: 0.2rem;
+  display: flex;
+  align-items: center;
+}
+
+.search-clear-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.search-clear-btn:hover {
+  color: var(--color-text-primary, #fff);
+}

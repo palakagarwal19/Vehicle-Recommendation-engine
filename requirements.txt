@@ -16,3 +16,4 @@ google.genai
 duckduckgo-search
 google-search-results
 ddgs
+bcrypt

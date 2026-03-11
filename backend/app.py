@@ -2,6 +2,8 @@ import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
+from auth_routes   import auth_bp
+from wallet_routes import wallet_bp
 from database import get_db_connection
 from engine import calculate_lifecycle
 from recommendation import recommend_vehicle
@@ -10,12 +12,17 @@ from greenwashing import evaluate_claims
 from carbon_index import carbon_score
 from annual_impact import annual_emissions
 from grid_sensitivity import grid_sensitivity
+from greenwashing import evaluate_claims
+from web_search import search_marketing_claims
+
 import math
 
 app = Flask(__name__)
 CORS(app)
 
 
+app.register_blueprint(auth_bp)
+app.register_blueprint(wallet_bp)
 # ==================================================
 # HEALTH CHECK
 # ==================================================
@@ -28,10 +35,6 @@ def home():
     })
 
 
-# ==================================================
-# VEHICLE LIST
-# ==================================================
-@app.route("/vehicles")
 # ==================================================
 # VEHICLE LIST  — updated route (replace in app.py)
 # Adds optional ?vehicle_type= filter for parallel
@@ -397,41 +400,188 @@ def break_even():
 # ==================================================
 # GREENWASHING DETECTION
 # ==================================================
+# ── Replace the /greenwashing route in app.py with this version ───────────────
+#
+# Imports needed at top of app.py (add if not already there):
+#
+#   from greenwashing import evaluate_claims, GreenwashingReport, RiskLevel
+#   from web_search import search_marketing_claims
+#
+# The route:
+#   1. Accepts lifecycle + vehicle_meta + optional proposed_claims from the frontend
+#   2. If search_web=True, calls web_search to find REAL manufacturer claims
+#      via Gemini grounded search, then runs them through evaluate_claims too
+#   3. Returns a single unified JSON response with both claim sets
+
+#==================================================
+# GREENWASHING DETECTION
+# ==================================================
+RISK_ORDER = ["SAFE", "CAUTION", "WARNING", "VIOLATION"]
+
+def _worst_risk(risks):
+    ranked = [r for r in risks if r in RISK_ORDER]
+    return max(ranked, key=lambda r: RISK_ORDER.index(r)) if ranked else "SAFE"
+
 @app.route("/greenwashing", methods=["POST"])
 def greenwashing():
-
-    data = request.json
-
-    lifecycle = data.get("lifecycle")
-    vehicle_meta = data.get("vehicle")
-    claims = data.get("claims", [])
+    data         = request.json or {}
+    lifecycle    = data.get("lifecycle")
+    vehicle_meta = data.get("vehicle") or data.get("vehicle_meta") or {}
+    search_web   = bool(data.get("search_web", False))
 
     if not lifecycle:
-        return jsonify({"error": "Missing lifecycle data"}), 400
+        return jsonify({"error": "lifecycle is required"}), 400
+    if not vehicle_meta:
+        return jsonify({"error": "vehicle is required"}), 400
 
-    result = evaluate_claims(lifecycle, vehicle_meta, claims)
+    # ── Normalise lifecycle keys ──────────────────────────────────────────────
+    def _get(d, *keys, default=0.0):
+        for k in keys:
+            if k in d and d[k] is not None:
+                try:
+                    return float(d[k])
+                except (TypeError, ValueError):
+                    pass
+        return float(default)
+
+    lc = {
+        # Per-km rates (used by rule engine for structural checks)
+        "total_g_per_km":          _get(lifecycle, "total_g_per_km"),
+        "operational_g_per_km":    _get(lifecycle, "operational_g_per_km"),
+        "manufacturing_g_per_km":  _get(lifecycle, "manufacturing_g_per_km"),
+        # Fixed one-time costs (source of truth — from engine.py)
+        "manufacturing_total_kg":  _get(lifecycle, "manufacturing_total_kg"),
+        "recycling_kg":            _get(lifecycle, "recycling_kg", default=0.0),
+    }
+
+    # ── Normalise vehicle_meta ────────────────────────────────────────────────
+    raw_type = (
+        vehicle_meta.get("vehicle_type") or
+        vehicle_meta.get("type") or
+        vehicle_meta.get("fuel_type") or "ICE"
+    ).upper().strip()
+
+    TYPE_MAP = {
+        "BEV": "EV", "ELECTRIC": "EV", "BATTERY": "EV",
+        "HYBRID": "HEV", "MILD_HYBRID": "HEV", "MHEV": "HEV",
+        "PLUGIN": "PHEV", "PLUGIN_HYBRID": "PHEV", "PLUG_IN": "PHEV",
+        "GASOLINE": "ICE", "PETROL": "ICE", "DIESEL": "ICE",
+        "GAS": "ICE", "CONVENTIONAL": "ICE",
+    }
+    vtype = TYPE_MAP.get(raw_type, raw_type)
+    if vtype not in ("EV", "HEV", "PHEV", "ICE"):
+        vtype = "ICE"
+
+    vm = {
+        "brand":        str(vehicle_meta.get("brand") or "Unknown"),
+        "model":        str(vehicle_meta.get("model") or "Unknown"),
+        "year":         vehicle_meta.get("year"),
+        "vehicle_type": vtype,
+        "electric":     vtype in ("EV", "PHEV"),
+    }
+
+    proposed_claims = data.get("claims", [])
+
+    # ── Web search ────────────────────────────────────────────────────────────
+    web_claims_raw   = []
+    web_search_error = None
+    if search_web:
+        try:
+            web_claims_raw = search_marketing_claims(
+                brand                = vm["brand"],
+                model                = vm["model"],
+                year                 = vm.get("year"),
+                actual_total         = lc["total_g_per_km"],
+                actual_operational   = lc["operational_g_per_km"],
+                actual_manufacturing = lc["manufacturing_g_per_km"],
+                vehicle_type         = vm["vehicle_type"],
+            )
+        except Exception as e:
+            print(f"[greenwashing] web_search error: {e}")
+            web_search_error = str(e)
+
+    # ── Run rule engine ───────────────────────────────────────────────────────
+    try:
+        report = evaluate_claims(
+            lifecycle       = lc,
+            vehicle_meta    = vm,
+            proposed_claims = proposed_claims or None,
+        )
+    except Exception as e:
+        print(f"[greenwashing] evaluate_claims error: {e}")
+        return jsonify({"error": str(e)}), 422
+
+    # ── Evaluate web-found claims ─────────────────────────────────────────────
+    web_findings = []
+    if web_claims_raw:
+        try:
+            web_report = evaluate_claims(
+                lifecycle       = lc,
+                vehicle_meta    = vm,
+                proposed_claims = [c["claim_text"] for c in web_claims_raw],
+            )
+            for finding, meta in zip(web_report.findings, web_claims_raw):
+                web_findings.append({
+                    "claim":           finding.claim,
+                    "risk_level":      finding.risk_level.value,
+                    "reason":          finding.reason,
+                    "suggestion":      finding.suggestion,
+                    "is_aspirational": finding.is_aspirational,
+                    "is_unverified":   finding.is_unverified,
+                    "source":          meta["source"],
+                    "source_url":      meta["source_url"],
+                    "claim_type":      meta["claim_type"],
+                    "context":         meta["context"],
+                })
+        except Exception as e:
+            web_search_error = (web_search_error or "") + f" | Rule engine: {e}"
+
+    # ── Combined risk + score ─────────────────────────────────────────────────
+    all_risks    = [report.overall_risk.value] + [w["risk_level"] for w in web_findings]
+    worst_risk   = _worst_risk(all_risks)
+
+    web_penalty  = sum(
+        25 if w["risk_level"] == "VIOLATION"
+        else 15 if w["risk_level"] == "WARNING"
+        else 5
+        for w in web_findings
+        if w["risk_level"] not in ("SAFE",) and not w.get("is_aspirational") and not w.get("is_unverified")
+    )
+    combined_score = max(10, report.transparency_score - web_penalty)
 
     return jsonify({
-        "brand": result.brand,
-        "model": result.model,
-        "vehicle_type": result.vehicle_type,
-        "total_g_per_km": result.total_g_per_km,
-        "operational_g_per_km": result.operational_g_per_km,
-        "manufacturing_g_per_km": result.manufacturing_g_per_km,
-        "overall_risk": result.overall_risk.value,
-        "structural_flags": result.structural_flags,
+        "brand":                  vm["brand"],
+        "model":                  vm["model"],
+        "vehicle_type":           vm["vehicle_type"],
+
+        # Lifecycle values — pass through fixed costs so frontend can display them
+        "total_g_per_km":         lc["total_g_per_km"],
+        "operational_g_per_km":   lc["operational_g_per_km"],
+        "manufacturing_g_per_km": lc["manufacturing_g_per_km"],
+        "manufacturing_total_kg": lc["manufacturing_total_kg"],
+        "recycling_kg":           lc["recycling_kg"],
+
+        "overall_risk":           worst_risk,
+        "transparency_score":     combined_score,
+        "structural_flags":       report.structural_flags,
+        "misleading_claims":      report.misleading_claims,
+
         "findings": [
             {
-                "claim": f.claim,
-                "risk_level": f.risk_level.value,
-                "reason": f.reason,
-                "suggestion": f.suggestion
+                "claim":           f.claim,
+                "risk_level":      f.risk_level.value,
+                "reason":          f.reason,
+                "suggestion":      f.suggestion,
+                "is_aspirational": f.is_aspirational,
+                "is_unverified":   f.is_unverified,
             }
-            for f in result.findings
-        ]
+            for f in report.findings
+        ],
+
+        "web_findings":     web_findings,
+        "web_search_error": web_search_error,
+        "web_search_ran":   search_web,
     })
-
-
 # ==================================================
 # CARBON SCORE
 # ==================================================
@@ -471,38 +621,35 @@ def annual_impact_route():
 # ==================================================
 # GRID SENSITIVITY
 # ==================================================
+# ── Replace the /grid route in app.py with this version ──────────────────────
+# Adds td_loss to the response so the frontend can show the exact DB value
+# instead of back-calculating it from raw vs corrected.
+
 @app.route("/grid")
 def get_grid_data():
-
     conn = get_db_connection()
-    cur = conn.cursor()
+    cur  = conn.cursor()
 
     cur.execute("""
-        SELECT country_code, year, raw_intensity, carbon_intensity_gco2_per_kwh
+        SELECT country_code, year, raw_intensity, td_loss, carbon_intensity_gco2_per_kwh
         FROM grid_intensity
         ORDER BY country_code, year
     """)
-
     rows = cur.fetchall()
-
     cur.close()
     conn.close()
 
     grid = {}
-
-    for country, year, raw, corrected in rows:
-
+    for country, year, raw, td_loss, corrected in rows:
         if country not in grid:
             grid[country] = {}
-
         grid[country][str(year)] = {
-            "raw": raw,
+            "raw":       raw,
+            "td_loss":   td_loss,   # e.g. 0.08  (fraction)
             "corrected": corrected
         }
 
     return jsonify(grid)
-
-
 # ==================================================
 # COUNTRIES (FROM GRID DATA)
 # ==================================================
@@ -606,7 +753,89 @@ def ai_summary():
         print(f"[ai_summary] ERROR: {e}")
         return jsonify({"error": str(e)}), 500
 
+# ── Add this to app.py ────────────────────────────────────────────────────────
+# Place after the existing /grid route.
+# Import at top of app.py:  from forecast import forecast_country, forecast_all
 
+from forecast import forecast_country, forecast_all
+
+@app.route("/forecast", methods=["POST"])
+def grid_forecast():
+    """
+    GPR-based grid carbon intensity forecast.
+
+    Request body (JSON):
+      {
+        "country":  "USA",          // single country — returns one forecast
+        "horizon":  10              // optional, default 10 years
+      }
+      OR
+      {
+        "all":      true,           // forecast every country in DB
+        "horizon":  10
+      }
+
+    Response (single country):
+      {
+        "country":      "USA",
+        "years":        [2024, 2025, ..., 2033],
+        "mean":         [380.1, 365.4, ...],
+        "lower":        [340.2, 320.1, ...],   // 95% CI lower
+        "upper":        [420.0, 410.7, ...],   // 95% CI upper
+        "last_year":    2023,
+        "last_actual":  395.2,
+        "trend":        "improving",
+        "model_score":  0.964,
+        "horizon":      10
+      }
+    """
+    data    = request.json or {}
+    horizon = int(data.get("horizon", 10))
+
+    conn = get_db_connection()
+    cur  = conn.cursor()
+
+    if data.get("all"):
+        # Fetch all grid data then forecast all countries
+        cur.execute("""
+            SELECT country_code, year, raw_intensity, carbon_intensity_gco2_per_kwh
+            FROM grid_intensity ORDER BY country_code, year
+        """)
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+
+        grid = {}
+        for cc, yr, raw, corr in rows:
+            grid.setdefault(cc, {})[str(yr)] = {"raw": raw, "corrected": corr}
+
+        results = forecast_all(grid, horizon)
+        return jsonify(results)
+
+    # Single country
+    country = data.get("country", "").upper()
+    if not country:
+        return jsonify({"error": "country or all=true required"}), 400
+
+    cur.execute("""
+        SELECT year, raw_intensity, carbon_intensity_gco2_per_kwh
+        FROM grid_intensity
+        WHERE country_code = %s
+        ORDER BY year
+    """, (country,))
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+
+    if not rows:
+        return jsonify({"error": f"No grid data for country: {country}"}), 404
+
+    years  = [r[0] for r in rows]
+    values = [r[2] if r[2] is not None else r[1] for r in rows]
+
+    result = forecast_country(years, values, horizon)
+    if "error" in result:
+        return jsonify(result), 422
+
+    return jsonify({"country": country, **result})
 # ==================================================
 # RUN SERVER
 # ==================================================
