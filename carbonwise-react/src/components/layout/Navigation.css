@@ -46,7 +46,7 @@
   padding: 0 2.5rem;
   display: flex;
   align-items: center;
-  height: 56px;
+  height: 96px;
   gap: 0;
   box-sizing: border-box;
 }
@@ -107,13 +107,13 @@
 .nav-link {
   display: flex;
   align-items: center;
-  padding: 0.38rem 0.65rem;
+  padding: 0.38rem 0.5rem;
   color: rgba(255,255,255,0.38);
   text-decoration: none;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.68rem;
+  font-family: 'calibri', sans-serif;
+  font-size: 2.4rem;
   font-weight: 500;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   border-radius: 4px;
   transition: color 0.15s, background 0.15s;
@@ -294,7 +294,6 @@
   position: absolute;
   top: calc(100% + 12px);
   right: 0;
-  min-width: 220px;
   background: rgba(3,12,6,0.98);
   backdrop-filter: blur(24px);
   border: 1px solid rgba(0,200,83,0.1);

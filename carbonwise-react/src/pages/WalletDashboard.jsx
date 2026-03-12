@@ -6,13 +6,11 @@ const API = "http://localhost:5000";
 
 // ── Carbon gauge SVG  ─────────────────────────────────────────────────────
 function CarbonGauge({ usedPct }) {
-  // Half-circle gauge: 0 % = green needle far left, 100 % = red needle far right
   const clampedPct = Math.min(Math.max(usedPct, 0), 100);
   const R          = 80;
   const cx         = 100;
   const cy         = 100;
-  // Arc goes from 180° → 0° (left to right across the top)
-  const startAngle = Math.PI;            // 180° in radians
+  const startAngle = Math.PI;
   const endAngle   = 0;
   const needleAngle = Math.PI - (clampedPct / 100) * Math.PI;
 
@@ -21,18 +19,15 @@ function CarbonGauge({ usedPct }) {
   const arcX2 = cx + R * Math.cos(endAngle);
   const arcY2 = cy + R * Math.sin(endAngle);
 
-  // Progress arc up to current usage
   const progressAngle = Math.PI - (clampedPct / 100) * Math.PI;
   const progX = cx + R * Math.cos(progressAngle);
   const progY = cy + R * Math.sin(progressAngle);
   const largeArc = clampedPct > 50 ? 1 : 0;
 
-  // Needle tip
   const nLen = 65;
   const nX   = cx + nLen * Math.cos(needleAngle);
   const nY   = cy + nLen * Math.sin(needleAngle);
 
-  // Colour interpolation: green → yellow → red
   const colour =
     clampedPct < 50  ? "#00C853" :
     clampedPct < 75  ? "#FFD600" :
@@ -40,12 +35,10 @@ function CarbonGauge({ usedPct }) {
 
   return (
     <svg viewBox="0 0 200 110" className="gauge-svg" aria-label={`Carbon usage: ${clampedPct.toFixed(1)}%`}>
-      {/* Track */}
       <path
         d={`M ${arcX1} ${arcY1} A ${R} ${R} 0 0 1 ${arcX2} ${arcY2}`}
         fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="12" strokeLinecap="round"
       />
-      {/* Progress arc */}
       {clampedPct > 0 && (
         <path
           d={`M ${arcX1} ${arcY1} A ${R} ${R} 0 ${largeArc} 1 ${progX} ${progY}`}
@@ -53,48 +46,56 @@ function CarbonGauge({ usedPct }) {
           style={{ filter: `drop-shadow(0 0 6px ${colour}80)` }}
         />
       )}
-      {/* Tick marks */}
       {[0, 25, 50, 75, 100].map(pct => {
         const a = Math.PI - (pct / 100) * Math.PI;
         const r1 = R + 6, r2 = R + 14;
         return (
-          <line
-            key={pct}
+          <line key={pct}
             x1={cx + r1 * Math.cos(a)} y1={cy + r1 * Math.sin(a)}
             x2={cx + r2 * Math.cos(a)} y2={cy + r2 * Math.sin(a)}
             stroke="rgba(255,255,255,0.25)" strokeWidth="1.5"
           />
         );
       })}
-      {/* Needle */}
-      <line
-        x1={cx} y1={cy}
-        x2={nX}  y2={nY}
+      <line x1={cx} y1={cy} x2={nX} y2={nY}
         stroke={colour} strokeWidth="2.5" strokeLinecap="round"
         style={{ filter: `drop-shadow(0 0 4px ${colour})` }}
       />
       <circle cx={cx} cy={cy} r="5" fill={colour} />
-      {/* Labels */}
       <text x="18"  y="108" fill="rgba(255,255,255,0.35)" fontSize="9">0%</text>
       <text x="172" y="108" fill="rgba(255,255,255,0.35)" fontSize="9">100%</text>
     </svg>
   );
 }
 
-// ── Trip row ──────────────────────────────────────────────────────────────
-function TripRow({ trip }) {
+// ── Trip row with climate button ──────────────────────────────────────────
+function TripRow({ trip, onClimate }) {
   const date = trip.logged_at
     ? new Date(trip.logged_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
     : "—";
+
   return (
     <div className="trip-row">
       <div className="trip-info">
         <span className="trip-vehicle">{trip.vehicle || "Unknown vehicle"}</span>
         <span className="trip-date">{date}</span>
       </div>
+
       <div className="trip-metrics">
-        <span className="trip-km">{trip.distance_km?.toLocaleString(undefined,{maximumFractionDigits:0})} km</span>
+        <span className="trip-km">
+          {trip.distance_km?.toLocaleString(undefined, { maximumFractionDigits: 0 })} km
+        </span>
         <span className="trip-co2 trip-co2--cc">−{trip.emissions_kg?.toFixed(1)}</span>
+
+        {/* ── Climate projection button ── */}
+        <button
+          className="trip-climate-btn"
+          onClick={() => onClimate(trip)}
+          title="See 10-year climate projection for this trip"
+        >
+          🔭
+          <span className="trip-climate-label">Climate</span>
+        </button>
       </div>
     </div>
   );
@@ -102,9 +103,8 @@ function TripRow({ trip }) {
 
 // ── Main component ────────────────────────────────────────────────────────
 export default function WalletDashboard() {
-  const navigate   = useNavigate();
-  const userId     = localStorage.getItem("cw_user_id");
-
+  const navigate = useNavigate();
+  const userId   = localStorage.getItem("cw_user_id");
 
   const [wallet,  setWallet]  = useState(null);
   const [trips,   setTrips]   = useState([]);
@@ -136,18 +136,29 @@ export default function WalletDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-
+  // Navigate to climate page with trip data as router state
+  const handleClimate = (trip) => {
+    navigate("/climate", {
+      state: {
+        emissions_kg: trip.emissions_kg,
+        distance_km:  trip.distance_km,
+        vehicle:      trip.vehicle || "Unknown vehicle",
+        // Pass trip date so the climate page can contextualise the projection
+        logged_at:    trip.logged_at,
+      },
+    });
+  };
 
   if (!userId)  return null;
   if (loading)  return <div className="wallet-page"><div className="wallet-loading">Loading wallet…</div></div>;
   if (error)    return <div className="wallet-page"><div className="wallet-error">⚠ {error} <button onClick={load}>Retry</button></div></div>;
   if (!wallet)  return null;
 
-  const used       = wallet.used_credits   ?? 0;
-  const remaining  = wallet.remaining_credits ?? 0;
-  const total      = wallet.total_credits  ?? 2300;
-  const usedPct    = wallet.usage_pct      ?? 0;
-  const stats      = wallet.stats          ?? {};
+  const used      = wallet.used_credits      ?? 0;
+  const remaining = wallet.remaining_credits ?? 0;
+  const total     = wallet.total_credits     ?? 4600;
+  const usedPct   = wallet.usage_pct         ?? 0;
+  const stats     = wallet.stats             ?? {};
 
   const statusLabel =
     usedPct < 50 ? { text: "On track",     cls: "status-green"  } :
@@ -157,6 +168,49 @@ export default function WalletDashboard() {
 
   return (
     <div className="wallet-page">
+
+      <style>{`
+        /* ── Trip climate button — inlined so wallet.css stays untouched ── */
+        .trip-climate-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+          background: rgba(0, 200, 83, 0.08);
+          border: 1px solid rgba(0, 200, 83, 0.2);
+          border-radius: 6px;
+          padding: 0.22rem 0.55rem;
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: #00C853;
+          cursor: pointer;
+          transition: background 0.15s, border-color 0.15s, transform 0.1s;
+          white-space: nowrap;
+          font-family: inherit;
+          line-height: 1;
+        }
+        .trip-climate-btn:hover {
+          background: rgba(0, 200, 83, 0.16);
+          border-color: rgba(0, 200, 83, 0.4);
+          transform: translateY(-1px);
+        }
+        .trip-climate-btn:active {
+          transform: translateY(0);
+        }
+        .trip-climate-label {
+          /* hide label on very small screens, keep the emoji */
+        }
+        @media (max-width: 380px) {
+          .trip-climate-label { display: none; }
+        }
+
+        /* Slightly wider trip-metrics to accommodate the new button */
+        .trip-metrics {
+          display: flex;
+          gap: 0.65rem;
+          align-items: center;
+          flex-shrink: 0;
+        }
+      `}</style>
 
       {/* ── Page header ── */}
       <div className="wallet-page-header">
@@ -181,12 +235,12 @@ export default function WalletDashboard() {
 
           <div className="wallet-hero-stats">
             <div className="hero-stat hero-stat--remaining">
-              <span className="hero-stat-value">{remaining.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+              <span className="hero-stat-value">{remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
               <span className="hero-stat-label"><span className="cc-unit">CC</span> remaining</span>
             </div>
             <div className="hero-stat-divider" />
             <div className="hero-stat">
-              <span className="hero-stat-value hero-stat-value--used">{used.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+              <span className="hero-stat-value hero-stat-value--used">{used.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
               <span className="hero-stat-label"><span className="cc-unit">CC</span> used this year</span>
             </div>
             <div className="hero-stat-divider" />
@@ -201,29 +255,32 @@ export default function WalletDashboard() {
         <section className="wallet-progress card">
           <div className="progress-header">
             <span>Budget used in {wallet.year}</span>
-            <span className="progress-header-cc"><span className="cc-badge"><span className="cc-badge-icon">🪙</span>CC</span> {used.toFixed(0)} / {total}</span>
+            <span className="progress-header-cc">
+              <span className="cc-badge"><span className="cc-badge-icon">🪙</span>CC</span>
+              {" "}{used.toFixed(0)} / {total}
+            </span>
           </div>
           <div className="progress-track">
             <div
               className="progress-fill"
               style={{
                 width: `${Math.min(usedPct, 100)}%`,
-                background: usedPct < 50 ? "#00C853" : usedPct < 75 ? "#FFD600" : usedPct < 90 ? "#FF9100" : "#FF1744"
+                background: usedPct < 50 ? "#00C853" : usedPct < 75 ? "#FFD600" : usedPct < 90 ? "#FF9100" : "#FF1744",
               }}
             />
           </div>
           <div className="progress-ticks">
-            <span>0</span><span>575</span><span>1150</span><span>1725</span><span>2300 🪙</span>
+            <span>0</span><span>1150</span><span>2300</span><span>3450</span><span>4600 🪙</span>
           </div>
         </section>
 
         {/* ── 4-stat grid ── */}
         <div className="wallet-stat-grid">
           {[
-            { label: "Trips this year",    value: stats.trips              ?? 0,  unit: ""         },
-            { label: "Distance driven",    value: (stats.total_km ?? 0).toLocaleString(undefined,{maximumFractionDigits:0}), unit: "km"       },
-            { label: "Emissions logged",   value: (stats.total_emissions_kg ?? 0).toFixed(1), unit: "CC"          },
-            { label: "Per trip average",   value: stats.trips ? ((stats.total_emissions_kg ?? 0) / stats.trips).toFixed(1) : "—", unit: stats.trips ? "CC" : ""  },
+            { label: "Trips this year",  value: stats.trips ?? 0,                                                                                     unit: ""   },
+            { label: "Distance driven",  value: (stats.total_km ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 }),                         unit: "km" },
+            { label: "Emissions logged", value: (stats.total_emissions_kg ?? 0).toFixed(1),                                                            unit: "CC" },
+            { label: "Per trip average", value: stats.trips ? ((stats.total_emissions_kg ?? 0) / stats.trips).toFixed(1) : "—", unit: stats.trips ? "CC" : "" },
           ].map(({ label, value, unit }) => (
             <div key={label} className="wallet-stat-card card">
               <span className="stat-value">{value}</span>
@@ -237,7 +294,27 @@ export default function WalletDashboard() {
         <section className="wallet-trips card">
           <div className="trips-header">
             <h3>Recent trips</h3>
-            <Link to="/travel" className="trips-log-btn">+ Log new trip</Link>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+              {/* Climate overview for all trips (uses wallet-level stats) */}
+              <button
+                className="trips-climate-all-btn"
+                onClick={() => navigate("/climate")}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: "0.3rem",
+                  background: "rgba(0,200,83,0.08)", border: "1px solid rgba(0,200,83,0.2)",
+                  borderRadius: "6px", padding: "0.28rem 0.7rem",
+                  fontSize: "0.75rem", fontWeight: 700, color: "#00C853",
+                  cursor: "pointer", fontFamily: "inherit",
+                  transition: "background 0.15s",
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(0,200,83,0.15)"}
+                onMouseLeave={e => e.currentTarget.style.background = "rgba(0,200,83,0.08)"}
+                title="See 10-year climate projection based on your overall driving pattern"
+              >
+                🔭 Overall projection
+              </button>
+              <Link to="/travel" className="trips-log-btn">+ Log new trip</Link>
+            </div>
           </div>
 
           {trips.length === 0 ? (
@@ -248,9 +325,26 @@ export default function WalletDashboard() {
               </Link>
             </div>
           ) : (
-            <div className="trips-list">
-              {trips.map(t => <TripRow key={t.log_id} trip={t} />)}
-            </div>
+            <>
+              {/* Column header hint */}
+              <div style={{
+                display: "flex", justifyContent: "flex-end",
+                padding: "0 0 0.4rem",
+                fontSize: "0.62rem", fontWeight: 700,
+                textTransform: "uppercase", letterSpacing: "0.07em",
+                color: "rgba(232,237,233,0.25)",
+              }}>
+                <span style={{ marginRight: "0.4rem" }}>km</span>
+                <span style={{ marginRight: "0.9rem" }}>CC</span>
+                <span style={{ marginRight: "0.3rem" }}>impact</span>
+              </div>
+
+              <div className="trips-list">
+                {trips.map(t => (
+                  <TripRow key={t.log_id} trip={t} onClimate={handleClimate} />
+                ))}
+              </div>
+            </>
           )}
         </section>
 

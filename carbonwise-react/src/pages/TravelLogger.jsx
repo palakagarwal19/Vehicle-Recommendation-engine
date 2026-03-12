@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import "../styles/wallet.css";
+import { TripImpactPanel } from "./TravelLogImpact";
 
 const API = "http://localhost:5000";
 
@@ -119,12 +120,11 @@ export default function TravelLogger() {
   const navigate  = useNavigate();
   const userId    = localStorage.getItem("cw_user_id");
 
-
-  const [vehicle,    setVehicle]    = useState(null);
-  const [distanceKm, setDistanceKm] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [result,     setResult]     = useState(null);   // last successful trip
-  const [error,      setError]      = useState(null);
+  const [vehicle,     setVehicle]     = useState(null);
+  const [distanceKm,  setDistanceKm]  = useState("");
+  const [submitting,  setSubmitting]  = useState(false);
+  const [tripResult,  setTripResult]  = useState(null);   // drives impact panel
+  const [error,       setError]       = useState(null);
 
   useEffect(() => { if (!userId) navigate("/login"); }, [userId, navigate]);
 
@@ -136,7 +136,6 @@ export default function TravelLogger() {
 
     setSubmitting(true);
     setError(null);
-    setResult(null);
 
     try {
       const res  = await fetch(`${API}/wallet/travel/by-name`, {
@@ -152,7 +151,18 @@ export default function TravelLogger() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || "Could not log trip"); return; }
-      setResult(data);
+
+      // ── normalise response shape for TripImpactPanel ──────────────────
+      // The panel expects: emissions_kg, distance_km, remaining_credits, vehicle
+      const normalised = {
+        emissions_kg:      data.trip?.emissions_kg      ?? data.emissions_kg      ?? 0,
+        distance_km:       data.trip?.distance_km       ?? data.distance_km       ?? dist,
+        remaining_credits: data.wallet?.remaining_credits_kg ?? data.remaining_credits ?? 0,
+        vehicle:           data.trip?.vehicle           ?? `${vehicle.brand} ${vehicle.model} ${vehicle.year}`,
+        // keep the raw response too in case the panel or caller needs it
+        _raw: data,
+      };
+      setTripResult(normalised);
       setDistanceKm("");
     } catch {
       setError("Network error — is the backend running?");
@@ -161,7 +171,11 @@ export default function TravelLogger() {
     }
   }
 
-
+  function handlePanelClose() {
+    setTripResult(null);
+    // Optionally reset the vehicle so the user can quickly log the next trip:
+    // setVehicle(null);
+  }
 
   return (
     <div className="wallet-page">
@@ -172,7 +186,13 @@ export default function TravelLogger() {
           <span className="wallet-page-title-icon">🚗</span>
           Log a Trip
         </h1>
-        <Link to="/wallet" className="wallet-log-trip-btn" style={{background:"transparent",color:"var(--eco)",border:"1px solid var(--eco-border)"}}>← Back to Wallet</Link>
+        <Link
+          to="/wallet"
+          className="wallet-log-trip-btn"
+          style={{ background: "transparent", color: "var(--eco)", border: "1px solid var(--eco-border)" }}
+        >
+          ← Back to Wallet
+        </Link>
       </div>
 
       <main className="wallet-main">
@@ -181,7 +201,9 @@ export default function TravelLogger() {
           {/* ── Logger form ── */}
           <section className="travel-form-card card">
             <h2 className="travel-heading">Log a trip</h2>
-            <p className="travel-sub">Select your vehicle, enter the distance, and we'll deduct the carbon cost from your wallet.</p>
+            <p className="travel-sub">
+              Select your vehicle, enter the distance, and we'll deduct the carbon cost from your wallet.
+            </p>
 
             <form onSubmit={handleSubmit} className="travel-form">
               <div className="travel-field">
@@ -190,7 +212,9 @@ export default function TravelLogger() {
                 {vehicle && (
                   <div className="travel-vehicle-preview">
                     <span>{vehicle.brand} {vehicle.model}</span>
-                    <span className={`badge badge-${(vehicle.vehicle_type||"").toLowerCase()}`}>{vehicle.vehicle_type}</span>
+                    <span className={`badge badge-${(vehicle.vehicle_type || "").toLowerCase()}`}>
+                      {vehicle.vehicle_type}
+                    </span>
                     <span style={{ opacity: 0.5 }}>{vehicle.year}</span>
                   </div>
                 )}
@@ -222,60 +246,51 @@ export default function TravelLogger() {
                 className="auth-btn"
                 disabled={!vehicle || !distanceKm || submitting}
               >
-                {submitting ? "Logging…" : "Log trip & deduct credits"}
+                {submitting
+                  ? <><span style={{ display: "inline-block", width: 12, height: 12, border: "2px solid rgba(0,26,13,0.3)", borderTopColor: "#001a0d", borderRadius: "50%", animation: "spin 0.7s linear infinite", marginRight: 8, verticalAlign: "middle" }} />Logging…</>
+                  : "Log trip & deduct credits"}
               </button>
             </form>
           </section>
 
-          {/* ── Result card ── */}
-          {result && (
-            <section className="travel-result card">
-              <div className="result-icon">✓</div>
-              <h3>Trip logged</h3>
-
-              <div className="result-trip">
-                <div className="result-row">
-                  <span>Vehicle</span>
-                  <strong>{result.trip.vehicle}</strong>
-                </div>
-                <div className="result-row">
-                  <span>Distance</span>
-                  <strong>{result.trip.distance_km} km</strong>
-                </div>
-                <div className="result-row">
-                  <span>Emissions</span>
-                  <strong className="result-co2">−{result.trip.emissions_kg.toFixed(3)}</strong>
-                </div>
+          {/* ── Right column hint (shown before first trip) ── */}
+          {!tripResult && (
+            <section className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem", alignItems: "flex-start", justifyContent: "center" }}>
+              <span style={{ fontSize: "2.5rem" }}>🌿</span>
+              <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0 }}>See your impact instantly</h3>
+              <p style={{ fontSize: "0.83rem", color: "var(--text-dim)", lineHeight: 1.6, margin: 0 }}>
+                After logging a trip you'll see exactly how much CO₂ you saved vs a petrol car, your remaining carbon budget, and — powered by ML Model — a 10-year climate projection based on your driving habits.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", width: "100%" }}>
+                {[
+                  { icon: "🌱", text: "kg CO₂ saved vs petrol baseline" },
+                  { icon: "🪙", text: "Remaining carbon credit balance" },
+                  { icon: "🌳", text: "How many trees your savings equal" },
+                  { icon: "🔭", text: "10-year climate projection" },
+                ].map(({ icon, text }) => (
+                  <div key={text} style={{ display: "flex", alignItems: "center", gap: "0.6rem", fontSize: "0.8rem", color: "var(--text-dim)" }}>
+                    <span style={{ fontSize: "1rem" }}>{icon}</span>
+                    <span>{text}</span>
+                  </div>
+                ))}
               </div>
-
-              <div className="result-wallet">
-                <div className="result-wallet-label">Wallet after this trip</div>
-                <div className="result-wallet-remaining">
-                  {result.wallet.remaining_credits_kg.toLocaleString(undefined,{maximumFractionDigits:1})}
-                  <span> kg remaining</span>
-                </div>
-                <div className="progress-track" style={{ marginTop: "0.75rem" }}>
-                  <div
-                    className="progress-fill"
-                    style={{
-                      width: `${Math.min(
-                        ((result.wallet.total_credits_kg - result.wallet.remaining_credits_kg) / result.wallet.total_credits_kg) * 100,
-                        100
-                      )}%`,
-                      background: "#00C853",
-                    }}
-                  />
-                </div>
-              </div>
-
-              <Link to="/wallet" className="auth-btn" style={{ display: "block", textAlign: "center", marginTop: "1.25rem" }}>
-                View wallet
-              </Link>
             </section>
           )}
 
         </div>
       </main>
+
+      {/* ── Impact bottom-sheet — mounts after successful trip POST ── */}
+      {tripResult && (
+        <TripImpactPanel
+          result={tripResult}
+          walletTotal={4600}
+          onClose={handlePanelClose}
+          onViewWallet={() => navigate("/wallet")}
+        />
+      )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

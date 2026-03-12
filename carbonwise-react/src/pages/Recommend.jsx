@@ -290,7 +290,6 @@ export default function Recommend() {
         .rec-page * { box-sizing: border-box; }
 
         .rec-page {
-          min-height: 100vh;
           background: #080c0a;
           color: #e0e0e0;
           font-family: 'Syne', sans-serif;
@@ -588,7 +587,6 @@ export default function Recommend() {
 
         .rec-card-meta {
           flex: 1;
-          min-width: 0;
         }
 
         .rec-rank-label {
