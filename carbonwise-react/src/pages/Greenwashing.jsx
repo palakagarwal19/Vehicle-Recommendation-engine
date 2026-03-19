@@ -151,6 +151,287 @@ const ScoreArc = ({ score = 85 }) => {
 /* ════════════════════════════════════════════════
    MAIN COMPONENT
 ════════════════════════════════════════════════ */
+// ─────────────────────────────────────────────────────────────────────────────
+// OCR Claim Checker — standalone component
+// ─────────────────────────────────────────────────────────────────────────────
+const RISK_CFG_OCR = {
+  SAFE:      { color:'#69F0AE', bg:'rgba(105,240,174,.12)', border:'rgba(105,240,174,.35)', icon:'✅', label:'Genuine' },
+  CAUTION:   { color:'#FFD740', bg:'rgba(255,215,64,.10)',  border:'rgba(255,215,64,.35)',  icon:'⚠️', label:'Needs Qualification' },
+  WARNING:   { color:'#FF9800', bg:'rgba(255,152,0,.12)',   border:'rgba(255,152,0,.40)',   icon:'⚠️', label:'Misleading' },
+  VIOLATION: { color:'#FF5252', bg:'rgba(255,82,82,.12)',   border:'rgba(255,82,82,.40)',   icon:'🚫', label:'Violation' },
+};
+
+function OcrClaimChecker({ api }) {
+  const [dragOver,    setDragOver]    = useState(false);
+  const [imageData,   setImageData]   = useState(null);   // { b64, mime, url }
+  const [loading,     setLoading]     = useState(false);
+  const [result,      setResult]      = useState(null);   // Gemini response
+  const [ocrError,    setOcrError]    = useState(null);
+  const inputRef = useRef(null);
+
+  const readFile = (file) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target.result;
+      const b64     = dataUrl.split(',')[1];
+      setImageData({ b64, mime: file.type, url: dataUrl });
+      setResult(null);
+      setOcrError(null);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    readFile(e.dataTransfer.files[0]);
+  };
+
+  const onFileChange = (e) => readFile(e.target.files[0]);
+
+  const analyse = async () => {
+    if (!imageData) return;
+    setLoading(true);
+    setResult(null);
+    setOcrError(null);
+    try {
+      const res  = await fetch(`${api}/ocr-claim`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ image_b64: imageData.b64, mime_type: imageData.mime }),
+      });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      setResult(json);
+    } catch (err) {
+      setOcrError(err.message || 'Analysis failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const reset = () => {
+    setImageData(null);
+    setResult(null);
+    setOcrError(null);
+    if (inputRef.current) inputRef.current.value = '';
+  };
+
+  const cfg = result?.risk_level ? RISK_CFG_OCR[result.risk_level] : null;
+
+  return (
+    <div style={{ marginTop:'2.5rem' }}>
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', gap:'.6rem', marginBottom:'1rem' }}>
+        <span style={{ fontSize:'1.2rem' }}>📸</span>
+        <span style={{ fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:'1rem', color:'#fff' }}>
+          Screenshot Claim Checker
+        </span>
+        <span style={{
+          background:'rgba(0,200,83,.12)', border:'1px solid rgba(0,200,83,.3)',
+          color:'#00C853', fontSize:'.68rem', fontWeight:700, letterSpacing:'.06em',
+          textTransform:'uppercase', padding:'.18rem .6rem', borderRadius:999
+        }}>AI Vision</span>
+      </div>
+      <p style={{ fontSize:'.8rem', color:'rgba(255,255,255,.35)', marginBottom:'1.25rem', lineHeight:1.5 }}>
+        Upload a screenshot of any vehicle marketing ad or claim. Gemini will OCR and evaluate whether the environmental claim is genuine.
+      </p>
+
+      <div className="card-gw" style={{ padding:'1.5rem' }}>
+        {/* Drop zone */}
+        {!imageData ? (
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+            onClick={() => inputRef.current?.click()}
+            style={{
+              border:`2px dashed ${dragOver ? '#00C853' : 'rgba(0,200,83,.25)'}`,
+              borderRadius:10, padding:'2.5rem 1.5rem', textAlign:'center',
+              cursor:'pointer', transition:'all .2s',
+              background: dragOver ? 'rgba(0,200,83,.08)' : 'rgba(0,200,83,.03)',
+            }}
+          >
+            <div style={{ fontSize:'2.5rem', marginBottom:'.6rem', opacity:.6 }}>🖼️</div>
+            <div style={{ color:'#00C853', fontWeight:700, fontSize:'.88rem', marginBottom:'.3rem' }}>
+              Drop screenshot here or click to browse
+            </div>
+            <div style={{ color:'rgba(255,255,255,.28)', fontSize:'.75rem' }}>
+              PNG, JPG, WEBP — any screenshot of a vehicle ad or marketing claim
+            </div>
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/*"
+              style={{ display:'none' }}
+              onChange={onFileChange}
+            />
+          </div>
+        ) : (
+          <div>
+            {/* Image preview + controls */}
+            <div style={{ display:'flex', gap:'1.25rem', alignItems:'flex-start', marginBottom:'1.25rem', flexWrap:'wrap' }}>
+              <img
+                src={imageData.url}
+                alt="Uploaded screenshot"
+                style={{ maxWidth:260, maxHeight:180, borderRadius:8, objectFit:'contain',
+                         border:'1px solid rgba(0,200,83,.2)', background:'rgba(0,200,83,.04)' }}
+              />
+              <div style={{ flex:1, minWidth:140 }}>
+                <div style={{ color:'rgba(255,255,255,.5)', fontSize:'.78rem', marginBottom:'.75rem' }}>
+                  Screenshot ready for analysis
+                </div>
+                <div style={{ display:'flex', gap:'.6rem', flexWrap:'wrap' }}>
+                  <button
+                    onClick={analyse}
+                    disabled={loading}
+                    style={{
+                      padding:'.55rem 1.2rem', borderRadius:999, border:'1.5px solid #00C853',
+                      background: loading ? 'rgba(0,200,83,.08)' : 'rgba(0,200,83,.15)',
+                      color:'#00C853', fontWeight:700, fontSize:'.82rem', cursor: loading ? 'not-allowed' : 'pointer',
+                      display:'flex', alignItems:'center', gap:'.45rem', transition:'all .2s',
+                      fontFamily:"'DM Mono',monospace",
+                    }}
+                  >
+                    {loading
+                      ? <><span style={{ display:'inline-block', animation:'spin 1s linear infinite' }}>⚙️</span> Analysing…</>
+                      : '🔍 Analyse Claim'
+                    }
+                  </button>
+                  <button
+                    onClick={reset}
+                    style={{
+                      padding:'.55rem 1rem', borderRadius:999,
+                      border:'1px solid rgba(255,255,255,.15)', background:'transparent',
+                      color:'rgba(255,255,255,.45)', fontSize:'.78rem', cursor:'pointer',
+                      fontFamily:"'DM Mono',monospace",
+                    }}
+                  >
+                    ✕ Clear
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Loading skeleton */}
+            {loading && (
+              <div style={{ display:'flex', flexDirection:'column', gap:'.5rem', padding:'1rem', background:'rgba(0,200,83,.04)', borderRadius:8 }}>
+                <div className="skel" style={{ height:14, width:'60%', borderRadius:4 }} />
+                <div className="skel" style={{ height:14, width:'80%', borderRadius:4 }} />
+                <div className="skel" style={{ height:14, width:'45%', borderRadius:4 }} />
+              </div>
+            )}
+
+            {/* Error */}
+            {ocrError && !loading && (
+              <div style={{ padding:'1rem', background:'rgba(255,82,82,.08)', border:'1px solid rgba(255,82,82,.3)', borderRadius:8, color:'#FF5252', fontSize:'.82rem' }}>
+                ⚠️ {ocrError}
+              </div>
+            )}
+
+            {/* Result */}
+            {result && !loading && (
+              <div>
+                {!result.found ? (
+                  <div style={{
+                    padding:'1.25rem', background:'rgba(255,255,255,.04)',
+                    border:'1px solid rgba(255,255,255,.1)', borderRadius:10,
+                    textAlign:'center',
+                  }}>
+                    <div style={{ fontSize:'1.6rem', marginBottom:'.5rem' }}>🔎</div>
+                    <div style={{ color:'rgba(255,255,255,.65)', fontWeight:600, fontSize:'.88rem', marginBottom:'.3rem' }}>
+                      No Claim Found
+                    </div>
+                    <div style={{ color:'rgba(255,255,255,.32)', fontSize:'.77rem' }}>
+                      No environmental or emissions marketing claim was detected in this screenshot.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    padding:'1.25rem',
+                    background: cfg?.bg || 'rgba(255,255,255,.04)',
+                    border:`1.5px solid ${cfg?.border || 'rgba(255,255,255,.1)'}`,
+                    borderRadius:10,
+                  }}>
+                    {/* Verdict header */}
+                    <div style={{ display:'flex', alignItems:'center', gap:'.6rem', marginBottom:'.75rem', flexWrap:'wrap' }}>
+                      <span style={{ fontSize:'1.2rem' }}>{cfg?.icon}</span>
+                      <span style={{ color: cfg?.color, fontWeight:800, fontSize:'.95rem', fontFamily:"'Syne',sans-serif" }}>
+                        {cfg?.label}
+                      </span>
+                      <span style={{
+                        background: cfg?.bg, border:`1px solid ${cfg?.border}`,
+                        color: cfg?.color, fontSize:'.68rem', fontWeight:700,
+                        letterSpacing:'.06em', textTransform:'uppercase',
+                        padding:'.18rem .6rem', borderRadius:999,
+                      }}>
+                        {result.risk_level}
+                      </span>
+                    </div>
+
+                    {/* Extracted claim */}
+                    {result.claim_text && (
+                      <div style={{ marginBottom:'.75rem' }}>
+                        <div style={{ color:'rgba(255,255,255,.4)', fontSize:'.72rem', fontWeight:600, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:'.3rem' }}>
+                          Claim Detected
+                        </div>
+                        <div style={{
+                          padding:'.6rem .9rem', background:'rgba(255,255,255,.05)',
+                          border:'1px solid rgba(255,255,255,.1)', borderRadius:7,
+                          color:'rgba(255,255,255,.85)', fontSize:'.85rem', fontStyle:'italic', lineHeight:1.5,
+                        }}>
+                          "{result.claim_text}"
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Verdict text */}
+                    {result.verdict && (
+                      <div style={{ marginBottom:'.6rem' }}>
+                        <div style={{ color:'rgba(255,255,255,.4)', fontSize:'.72rem', fontWeight:600, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:'.3rem' }}>
+                          Verdict
+                        </div>
+                        <div style={{ color:'rgba(255,255,255,.8)', fontSize:'.85rem', lineHeight:1.55 }}>
+                          {result.verdict}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Explanation */}
+                    {result.explanation && (
+                      <div style={{ marginBottom: result.suggestion ? '.6rem' : 0 }}>
+                        <div style={{ color:'rgba(255,255,255,.4)', fontSize:'.72rem', fontWeight:600, letterSpacing:'.06em', textTransform:'uppercase', marginBottom:'.3rem' }}>
+                          Analysis
+                        </div>
+                        <div style={{ color:'rgba(255,255,255,.55)', fontSize:'.8rem', lineHeight:1.55 }}>
+                          {result.explanation}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Suggestion */}
+                    {result.suggestion && (
+                      <div style={{
+                        marginTop:'.75rem', padding:'.65rem .9rem',
+                        background:'rgba(0,200,83,.07)', border:'1px solid rgba(0,200,83,.2)',
+                        borderRadius:7,
+                      }}>
+                        <span style={{ color:'#00C853', fontWeight:700, fontSize:'.78rem' }}>💡 Suggestion: </span>
+                        <span style={{ color:'rgba(0,200,83,.75)', fontSize:'.8rem', lineHeight:1.5 }}>{result.suggestion}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Greenwashing() {
 
   const [vehicles,        setVehicles]        = useState([]);
@@ -729,7 +1010,6 @@ export default function Greenwashing() {
           </div>
         )}
 
-        <div style={{ height:'3rem' }} />
       </div>
     </div>
   );

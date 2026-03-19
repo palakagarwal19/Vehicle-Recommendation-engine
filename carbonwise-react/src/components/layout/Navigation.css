@@ -46,8 +46,8 @@
   padding: 0 2.5rem;
   display: flex;
   align-items: center;
-  height: 96px;
-  gap: 0;
+  height: 106px;
+  gap: 100;
   box-sizing: border-box;
 }
 

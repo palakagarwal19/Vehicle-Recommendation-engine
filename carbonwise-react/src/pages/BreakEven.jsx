@@ -4,6 +4,7 @@ import "../styles/break-even.css";
 import {
   Chart as ChartJS,
   LineElement,
+  BarElement,
   PointElement,
   CategoryScale,
   LinearScale,
@@ -12,9 +13,9 @@ import {
   Filler
 } from "chart.js";
 
-import { Line } from "react-chartjs-2";
+import { Line, Bar } from "react-chartjs-2";
 
-ChartJS.register(LineElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend, Filler);
+ChartJS.register(LineElement, BarElement, PointElement, CategoryScale, LinearScale, Tooltip, Legend, Filler);
 
 const API = "http://localhost:5000";
 
@@ -36,7 +37,14 @@ const badgeClass = t => {
   return m[t.toUpperCase()] ?? t.toLowerCase();
 };
 
-// Small inline spinner — size-capped, never fills container
+// ── Color constants ────────────────────────────────────────────────────────────
+const COLORS = {
+  manufacturing: { bg: "#2196F3", border: "#1565C0", faint: "rgba(33,150,243,0.12)" },
+  operational:   { bg: "#FF5252", border: "#B71C1C", faint: "rgba(255,82,82,0.12)" },
+  eol:           { bg: "#FFC107", border: "#F57F17", faint: "rgba(255,193,7,0.12)" },
+};
+
+// Small inline spinner
 function MiniSpinner() {
   return (
     <span style={{
@@ -46,6 +54,117 @@ function MiniSpinner() {
       animation: "be-spin 0.7s linear infinite",
       verticalAlign: "middle", marginRight: 6,
     }} />
+  );
+}
+
+// ── Mini emissions bar chart ───────────────────────────────────────────────────
+function EmissionsBarChart({ mfgGPerKm, opGPerKm, eolGPerKm = 0, label }) {
+  const data = {
+    labels: ["g / km breakdown"],
+    datasets: [
+      {
+        label: "Manufacturing",
+        data: [+(mfgGPerKm ?? 0).toFixed(2)],
+        backgroundColor: COLORS.manufacturing.bg,
+        borderColor: COLORS.manufacturing.border,
+        borderWidth: 1,
+        borderRadius: { topLeft: 4, bottomLeft: 4 },
+        stack: "stack",
+      },
+      {
+        label: "Operational",
+        data: [+(opGPerKm ?? 0).toFixed(2)],
+        backgroundColor: COLORS.operational.bg,
+        borderColor: COLORS.operational.border,
+        borderWidth: 1,
+        stack: "stack",
+      },
+      {
+        label: "EoL / Recycling",
+        data: [+(eolGPerKm ?? 0).toFixed(2)],
+        backgroundColor: COLORS.eol.bg,
+        borderColor: COLORS.eol.border,
+        borderWidth: 1,
+        borderRadius: { topRight: 4, bottomRight: 4 },
+        stack: "stack",
+      },
+    ],
+  };
+
+  const options = {
+    indexAxis: "y",           // horizontal stacked bar
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 600 },
+    plugins: {
+      legend: {
+        display: true,
+        position: "bottom",
+        labels: {
+          color: "rgba(255,255,255,0.55)",
+          font: { size: 10, family: "inherit" },
+          boxWidth: 10,
+          padding: 8,
+        },
+      },
+      tooltip: {
+        backgroundColor: "rgba(10,10,10,0.92)",
+        borderColor: "rgba(255,255,255,0.1)",
+        borderWidth: 1,
+        titleColor: "#fff",
+        bodyColor: "rgba(255,255,255,0.75)",
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.x.toFixed(1)} g/km`,
+        },
+      },
+    },
+    scales: {
+      x: {
+        stacked: true,
+        beginAtZero: true,
+        grid: { color: "rgba(255,255,255,0.06)" },
+        ticks: {
+          color: "rgba(255,255,255,0.4)",
+          font: { size: 10 },
+          callback: v => `${v}g`,
+        },
+        title: {
+          display: false,
+        },
+      },
+      y: {
+        stacked: true,
+        display: false,
+        grid: { display: false },
+      },
+    },
+  };
+
+  return (
+    <div style={{ height: 110, marginTop: "1.25rem" }}>
+      <Bar data={data} options={options} />
+    </div>
+  );
+}
+
+// ── Donut-style legend pills for the card header ───────────────────────────────
+function ColorLegend() {
+  return (
+    <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
+      {[
+        { label: "Manufacturing", color: COLORS.manufacturing.bg },
+        { label: "Operational",   color: COLORS.operational.bg },
+        { label: "EoL",           color: COLORS.eol.bg },
+      ].map(({ label, color }) => (
+        <span key={label} style={{
+          display: "inline-flex", alignItems: "center", gap: 5,
+          fontSize: "0.7rem", color: "rgba(255,255,255,0.5)",
+        }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: color, flexShrink: 0 }} />
+          {label}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -113,7 +232,6 @@ function VehicleSelector({ side, vehicles, vehiclesLoading, sel, setSel }) {
         &nbsp;{label}
       </h4>
 
-      {/* Powertrain pills */}
       <div className="be-type-pills">
         {POWERTRAIN_TYPES.map(pt => (
           <button
@@ -206,36 +324,28 @@ export default function BreakEven() {
   const [calculating,   setCalculating]   = useState(false);
   const [calcError,     setCalcError]     = useState(null);
 
-  // ── Load vehicles: page 1 immediately, background pages after ─────────────
   useEffect(() => { loadVehicles(); }, []);
 
   async function loadVehicles() {
     setVehiclesLoading(true);
     setVehicles([]);
-
     try {
-      // Page 1 — show something immediately
-      // Use /vehicles without vehicle_type filter for maximum compatibility
-      const r1   = await fetch(`${API}/vehicles?page=1&limit=100`);
-      const j1   = await r1.json();
+      const r1    = await fetch(`${API}/vehicles?page=1&limit=100`);
+      const j1    = await r1.json();
       const batch1 = Array.isArray(j1) ? j1 : (j1.vehicles ?? []);
       const total  = j1.total ?? batch1.length;
-
       setVehicles(batch1);
       setVehicleCount(total);
-      setVehiclesLoading(false);   // ← UI unlocks here regardless of bg loading
+      setVehiclesLoading(false);
 
-      // Background: remaining pages
       if (total > 100) {
         setVehiclesLoadingMore(true);
         const totalPages = Math.ceil(total / 200);
-
         for (let p = 2; p <= Math.min(totalPages, 20); p++) {
           const r  = await fetch(`${API}/vehicles?page=${p}&limit=200`);
           const j  = await r.json();
           const batch = Array.isArray(j) ? j : (j.vehicles ?? []);
           if (!batch.length) break;
-
           setVehicles(prev => {
             const keys = new Set(prev.map(v => `${v.brand}|${v.model}|${v.year ?? v.Year}`));
             const fresh = batch.filter(v => !keys.has(`${v.brand}|${v.model}|${v.year ?? v.Year}`));
@@ -259,13 +369,12 @@ export default function BreakEven() {
       const data = await res.json();
       setVehicles(Array.isArray(data) ? data : []);
     } catch {
-      // ignore search errors
+      // ignore
     } finally {
       setVehiclesLoading(false);
     }
   }
 
-  // ── Calculate ─────────────────────────────────────────────────────────────
   const vA = selA.resolved;
   const vB = selB.resolved;
 
@@ -295,7 +404,7 @@ export default function BreakEven() {
     }
   }
 
-  // ── Chart ─────────────────────────────────────────────────────────────────
+  // ── Line chart ─────────────────────────────────────────────────────────────
   const chartData = useMemo(() => {
     if (!breakEvenData) return null;
     const bkm = breakEvenData.break_even_km;
@@ -491,7 +600,7 @@ export default function BreakEven() {
               </div>
             </div>
 
-            {/* Chart */}
+            {/* Line chart */}
             <div className="chart-container">
               <h3>Cumulative Lifecycle Emissions</h3>
               {hasBkm && chartData ? (
@@ -505,30 +614,59 @@ export default function BreakEven() {
               )}
             </div>
 
-            {/* Cards */}
+            {/* ── Comparison cards with embedded bar charts ── */}
             <div className="grid grid-2">
-              {[{ key: "a", name: aName }, { key: "b", name: bName }].map(({ key, name }) => {
-                const pt = breakEvenData[`${key}_vehicle_type`];
+              {[
+                { key: "a", name: aName },
+                { key: "b", name: bName },
+              ].map(({ key, name }) => {
+                const pt        = breakEvenData[`${key}_vehicle_type`];
+                const mfgGPerKm = breakEvenData[`${key}_manufacturing_g_per_km`];
+                const opGPerKm  = breakEvenData[`${key}_operational_g_per_km`];
+                // EoL g/km — use if backend sends it, else 0
+                const eolGPerKm = breakEvenData[`${key}_recycling_g_per_km`] ?? 0;
+
                 return (
                   <div key={key} className="card comparison-card">
+                    {/* Card header */}
                     <h4>{name}</h4>
-                    <p style={{ marginBottom: "1rem" }}>
+                    <p style={{ marginBottom: "0.75rem" }}>
                       <span className={`badge badge-${badgeClass(pt)}`}>{pt}</span>
                       &nbsp;{breakEvenData[`${key}_year`]}
                     </p>
+
+                    {/* ── Stats ── */}
                     <div className="mt-md">
                       <div className="emission-value">
                         <span className="emission-label">Manufacturing (lifetime total)</span>
-                        <span className="emission-number">{fmtKg(breakEvenData[`${key}_manufacturing_total_kg`])}</span>
+                        <span className="emission-number"
+                          style={{ color: COLORS.manufacturing.bg }}>
+                          {fmtKg(breakEvenData[`${key}_manufacturing_total_kg`])}
+                        </span>
                       </div>
                       <div className="emission-value">
                         <span className="emission-label">Operational rate</span>
-                        <span className="emission-number">{fmtGkm(breakEvenData[`${key}_operational_g_per_km`])}</span>
+                        <span className="emission-number"
+                          style={{ color: COLORS.operational.bg }}>
+                          {fmtGkm(opGPerKm)}
+                        </span>
                       </div>
                       <div className="emission-value">
                         <span className="emission-label">Manufacturing rate</span>
-                        <span className="emission-number">{fmtGkm(breakEvenData[`${key}_manufacturing_g_per_km`])}</span>
+                        <span className="emission-number"
+                          style={{ color: COLORS.manufacturing.bg }}>
+                          {fmtGkm(mfgGPerKm)}
+                        </span>
                       </div>
+                      {eolGPerKm > 0 && (
+                        <div className="emission-value">
+                          <span className="emission-label">EoL / Recycling rate</span>
+                          <span className="emission-number"
+                            style={{ color: COLORS.eol.bg }}>
+                            {fmtGkm(eolGPerKm)}
+                          </span>
+                        </div>
+                      )}
                       <div className="emission-value emission-value--total">
                         <span className="emission-label">Total lifecycle rate</span>
                         <span className="emission-number emission-number--total">
@@ -536,11 +674,35 @@ export default function BreakEven() {
                         </span>
                       </div>
                     </div>
+
+                    {/* ── Divider ── */}
+                    <div style={{
+                      margin: "1.1rem 0 0.4rem",
+                      borderTop: "1px solid rgba(255,255,255,0.07)",
+                    }} />
+
+                    {/* ── Emissions breakdown bar chart ── */}
+                    <p style={{
+                      fontSize: "0.72rem",
+                      color: "rgba(255,255,255,0.4)",
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      margin: "0 0 0.2rem",
+                    }}>
+                      Emissions breakdown (g / km)
+                    </p>
+                    <EmissionsBarChart
+                      mfgGPerKm={mfgGPerKm}
+                      opGPerKm={opGPerKm}
+                      eolGPerKm={eolGPerKm}
+                      label={name}
+                    />
                   </div>
                 );
               })}
             </div>
 
+            {/* Summary footer */}
             {hasBkm && (
               <div className="card mt-lg" style={{ textAlign: "center", padding: "1.5rem" }}>
                 <p style={{ color: "var(--color-text-secondary)", fontSize: "0.875rem" }}>

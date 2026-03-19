@@ -183,3 +183,41 @@
 .search-clear-btn:hover {
   color: var(--color-text-primary, #fff);
 }
+
+/* AI Generate Button */
+.ai-generate-wrap {
+  margin-top: 2rem;
+  display: flex;
+  justify-content: center;
+}
+
+.ai-generate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: linear-gradient(135deg, rgba(0,200,83,0.15), rgba(0,200,83,0.05));
+  border: 1.5px solid rgba(0,200,83,0.4);
+  color: #00C853;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 0.85rem 2rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ai-generate-btn:hover {
+  background: rgba(0,200,83,0.2);
+  border-color: #00C853;
+  box-shadow: 0 0 20px rgba(0,200,83,0.2);
+  transform: translateY(-1px);
+}
+
+.ai-generate-btn svg {
+  transition: transform 0.3s;
+}
+
+.ai-generate-btn:hover svg {
+  transform: rotate(20deg) scale(1.2);
+}

@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import Spline from "@splinetool/react-spline";
 import '../styles/landing.css';
+import bgImage from '../components/images/back.jpeg';
 
-// ── Animated car SVG ──────────────────────────────────────────────────────────
+// ── Car SVG ───────────────────────────────────────────────────────────────────
 function CarSVG({ className }) {
   return (
     <svg className={className} viewBox="0 0 220 80" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -15,75 +15,32 @@ function CarSVG({ className }) {
         fill="rgba(0,200,83,0.08)" stroke="rgba(0,200,83,0.3)" strokeWidth="0.6"/>
       <line x1="108" y1="18" x2="107" y2="50" stroke="rgba(0,200,83,0.25)" strokeWidth="0.8"/>
       <rect x="18" y="52" width="186" height="8" rx="2" fill="#051008" stroke="#00C853" strokeWidth="0.8"/>
-      <circle cx="55" cy="62" r="14" fill="#051008" stroke="#00C853" strokeWidth="1.2"/>
-      <circle cx="55" cy="62" r="8" fill="#0a1a0f" stroke="rgba(0,200,83,0.5)" strokeWidth="0.8"/>
-      <circle cx="55" cy="62" r="3" fill="#00C853"/>
+      <circle cx="55"  cy="62" r="14" fill="#051008" stroke="#00C853" strokeWidth="1.2"/>
+      <circle cx="55"  cy="62" r="8"  fill="#0a1a0f" stroke="rgba(0,200,83,0.5)" strokeWidth="0.8"/>
+      <circle cx="55"  cy="62" r="3"  fill="#00C853"/>
       <circle cx="162" cy="62" r="14" fill="#051008" stroke="#00C853" strokeWidth="1.2"/>
-      <circle cx="162" cy="62" r="8" fill="#0a1a0f" stroke="rgba(0,200,83,0.5)" strokeWidth="0.8"/>
-      <circle cx="162" cy="62" r="3" fill="#00C853"/>
-      <ellipse cx="198" cy="40" rx="5" ry="7" fill="rgba(0,200,83,0.15)" stroke="#00C853" strokeWidth="0.8"/>
+      <circle cx="162" cy="62" r="8"  fill="#0a1a0f" stroke="rgba(0,200,83,0.5)" strokeWidth="0.8"/>
+      <circle cx="162" cy="62" r="3"  fill="#00C853"/>
+      <ellipse cx="198" cy="40" rx="5"   ry="7" fill="rgba(0,200,83,0.15)" stroke="#00C853" strokeWidth="0.8"/>
       <ellipse cx="198" cy="40" rx="2.5" ry="4" fill="rgba(0,200,83,0.6)"/>
       <rect x="19" y="36" width="4" height="10" rx="1" fill="rgba(255,82,82,0.4)" stroke="#FF5252" strokeWidth="0.5"/>
       <rect x="88" y="54" width="22" height="8" rx="2" fill="rgba(0,200,83,0.15)" stroke="rgba(0,200,83,0.5)" strokeWidth="0.5"/>
       <text x="99" y="61" textAnchor="middle" fill="#00C853" fontSize="5" fontWeight="bold" fontFamily="monospace">EV</text>
-      <path d="M107 52 L104 22" stroke="rgba(0,200,83,0.2)" strokeWidth="0.6"/>
     </svg>
   );
 }
 
-// ── Particle canvas ────────────────────────────────────────────────────────────
-function ParticleCanvas({ carX, containerWidth }) {
-  const canvasRef = useRef(null);
-  const particlesRef = useRef([]);
-  const rafRef = useRef(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    canvas.width  = containerWidth || window.innerWidth;
-    canvas.height = 120;
-
-    function spawnParticle() {
-      const isGreen = Math.random() > 0.3;
-      particlesRef.current.push({
-        x: carX - 10, y: 80 + (Math.random() - 0.5) * 12,
-        vx: -(Math.random() * 1.5 + 0.5), vy: (Math.random() - 0.5) * 0.8,
-        life: 1, size: Math.random() * 4 + 1,
-        color: isGreen ? `rgba(0,200,83,` : `rgba(105,240,174,`,
-      });
-    }
-
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (carX > 30 && carX < canvas.width + 100) {
-        for (let i = 0; i < 2; i++) spawnParticle();
-      }
-      particlesRef.current = particlesRef.current.filter(p => p.life > 0.02);
-      particlesRef.current.forEach(p => {
-        p.x += p.vx; p.y += p.vy; p.life *= 0.96; p.size *= 0.99;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, Math.max(0.1, p.size), 0, Math.PI * 2);
-        ctx.fillStyle = `${p.color}${p.life.toFixed(2)})`;
-        ctx.fill();
-      });
-      rafRef.current = requestAnimationFrame(draw);
-    }
-    draw();
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [carX, containerWidth]);
-
-  return <canvas ref={canvasRef} className="particle-canvas" aria-hidden="true" />;
-}
-
-// ── Animated number counter ───────────────────────────────────────────────────
-function CountUp({ target, duration = 1800, suffix = '', prefix = '' }) {
-  const [val, setVal]   = useState(0);
+// ── Animated counter ──────────────────────────────────────────────────────────
+function CountUp({ target, duration = 1800, suffix = '' }) {
+  const [val, setVal]         = useState(0);
   const [started, setStarted] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
-    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setStarted(true); }, { threshold: 0.5 });
+    const obs = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) setStarted(true); },
+      { threshold: 0.5 }
+    );
     if (ref.current) obs.observe(ref.current);
     return () => obs.disconnect();
   }, []);
@@ -91,29 +48,37 @@ function CountUp({ target, duration = 1800, suffix = '', prefix = '' }) {
   useEffect(() => {
     if (!started) return;
     const start = performance.now();
-    const raf = requestAnimationFrame(function tick(now) {
+    let rafId;
+    const tick = now => {
       const p = Math.min((now - start) / duration, 1);
       setVal(Math.round((1 - Math.pow(1 - p, 3)) * target));
-      if (p < 1) requestAnimationFrame(tick);
-    });
-    return () => cancelAnimationFrame(raf);
+      if (p < 1) rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
   }, [started, target, duration]);
 
-  return <span ref={ref}>{prefix}{val.toLocaleString()}{suffix}</span>;
+  return <span ref={ref}>{val.toLocaleString()}{suffix}</span>;
 }
 
-// ── Scroll-reveal wrapper ─────────────────────────────────────────────────────
+// ── Scroll-reveal ─────────────────────────────────────────────────────────────
 function Reveal({ children, delay = 0, className = '' }) {
   const ref = useRef(null);
   const [vis, setVis] = useState(false);
   useEffect(() => {
-    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setVis(true); }, { threshold: 0.15 });
+    const obs = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) setVis(true); },
+      { threshold: 0.12 }
+    );
     if (ref.current) obs.observe(ref.current);
     return () => obs.disconnect();
   }, []);
   return (
-    <div ref={ref} className={`reveal ${vis ? 'reveal--visible' : ''} ${className}`}
-      style={{ transitionDelay: `${delay}ms` }}>
+    <div
+      ref={ref}
+      className={`reveal ${vis ? 'reveal--visible' : ''} ${className}`}
+      style={{ transitionDelay: `${delay}ms` }}
+    >
       {children}
     </div>
   );
@@ -121,30 +86,6 @@ function Reveal({ children, delay = 0, className = '' }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function Home() {
-  const [carX, setCarX]     = useState(-260);
-  const [parked, setParked] = useState(false);
-  const containerRef = useRef(null);
-  const rafRef    = useRef(null);
-  const startRef  = useRef(null);
-  const CW        = useRef(typeof window !== 'undefined' ? window.innerWidth : 1400);
-
-  useEffect(() => {
-    CW.current = window.innerWidth;
-    const target   = CW.current * 0.5 - 110;
-    const duration = 2800;
-    function tick(now) {
-      if (!startRef.current) startRef.current = now;
-      const elapsed = now - startRef.current;
-      const p    = Math.min(elapsed / duration, 1);
-      const ease = p < 0.7 ? (p / 0.7) * 0.85 : 0.85 + ((p - 0.7) / 0.3) * 0.15;
-      setCarX(-260 + (target + 260) * ease);
-      if (p < 1) rafRef.current = requestAnimationFrame(tick);
-      else setParked(true);
-    }
-    const timer = setTimeout(() => { rafRef.current = requestAnimationFrame(tick); }, 400);
-    return () => { clearTimeout(timer); cancelAnimationFrame(rafRef.current); };
-  }, []);
-
   const tools = [
     { to: '/compare',       icon: '⟳', label: 'Multi-Vehicle Compare',      desc: 'Side-by-side lifecycle analysis for up to 3 vehicles with real-time charts.' },
     { to: '/recommend',     icon: '◎', label: 'Smart Recommendations',       desc: 'Personalised picks based on your usage, grid, and sustainability goals.' },
@@ -155,30 +96,20 @@ export default function Home() {
   ];
 
   const stats = [
-    { value: 220, suffix: ' g/km', label: 'Avg petrol car lifecycle',  color: '#FF5252' },
-    { value: 75,  suffix: ' g/km', label: 'Avg EV lifecycle (EU grid)', color: '#00C853' },
-    { value: 200, suffix: '+',     label: 'Countries with grid data',   color: '#69F0AE' },
-    { value: 3,   suffix: '×',     label: 'Cleaner — EV vs petrol',     color: '#B2DFDB' },
+    { value: 220, suffix: ' g/km', label: 'Avg petrol car lifecycle',   color: '#FF5252' },
+    { value: 75,  suffix: ' g/km', label: 'Avg EV lifecycle (EU grid)',  color: '#00C853' },
+    { value: 200, suffix: '+',     label: 'Countries with grid data',    color: '#69F0AE' },
+    { value: 3,   suffix: '×',     label: 'Cleaner — EV vs petrol',      color: '#B2DFDB' },
   ];
 
   return (
     <main className="cw-home">
 
-      {/* ══════════════════════════════════════════════════════
-          GLOBAL SPLINE BACKGROUND — fixed behind everything
-          ══════════════════════════════════════════════════════ */}
-      <div className="cw-spline-bg" aria-hidden="true">
-        <Spline
-          scene="https://prod.spline.design/KAvZ4s-FmGSBXJGX/scene.splinecode"
-          style={{ width: "100%", height: "100%", display: "block" }}
-        />
-        {/* Light vignette overlay — keeps text legible without hiding the model */}
-        <div className="cw-spline-overlay" />
-      </div>
+      <div className="cw-bg-image" style={{ backgroundImage: `url(${bgImage})` }} aria-hidden="true" />
+      <div className="cw-bg-overlay" aria-hidden="true" />
 
-      {/* ── HERO ── */}
+      {/* ── Hero ── */}
       <section className="cw-hero">
-        {/* Spotlight pulse on top of the blur */}
         <div className="cw-spotlight" aria-hidden="true" />
 
         <div className="cw-hero-content">
@@ -186,17 +117,14 @@ export default function Home() {
             <span className="cw-eyebrow-dot" />
             GREET2 · WLTP · EU EmpCo 2024/825
           </div>
-
           <h1 className="cw-hero-title">
             <span className="cw-title-line cw-title-line--1">The True Cost</span>
             <span className="cw-title-line cw-title-line--2">of Every Car</span>
             <span className="cw-title-line cw-title-line--3">on the Planet</span>
           </h1>
-
           <p className="cw-hero-sub">
             Manufacturing · Grid · Fuel · Recycling — unified into one number.
           </p>
-
           <div className="cw-hero-cta">
             <Link to="/compare" className="cw-btn cw-btn--primary">
               <span>Compare Vehicles</span>
@@ -207,18 +135,30 @@ export default function Home() {
             <Link to="/recommend"     className="cw-btn cw-btn--ghost">Get Recommendation</Link>
             <Link to="/grid-insights" className="cw-btn cw-btn--ghost">Grid Insights + ML</Link>
           </div>
+          <div className="cw-data-ticker" aria-hidden="true">
+            {[
+              { dot: '#FF5252', text: 'ICE avg 220 g/km'   },
+              { dot: '#00C853', text: 'EV (EU) 75 g/km'    },
+              { dot: '#69F0AE', text: '200+ grid regions'  },
+              { dot: '#FFD740', text: 'GREET2 methodology' },
+            ].map(({ dot, text }) => (
+              <span key={text} className="cw-ticker-item">
+                <span className="cw-ticker-dot" style={{ background: dot }} />
+                {text}
+              </span>
+            ))}
+          </div>
         </div>
 
-        {/* Animated car stage */}
-        <div className="cw-car-stage" ref={containerRef} aria-hidden="true">
-          <ParticleCanvas carX={carX} containerWidth={CW.current} />
+        {/* Car stage — pure CSS, no JS animation whatsoever */}
+        <div className="cw-car-stage" aria-hidden="true">
           <div className="cw-road"><div className="cw-road-dash" /></div>
-          <div className={`cw-car-wrap ${parked ? 'cw-car-wrap--parked' : ''}`}
-            style={{ transform: `translateX(${carX}px)` }}>
+          <div className="cw-car-wrap cw-car-drive">
             <CarSVG className="cw-car-svg" />
-            {!parked && <div className="cw-headlight-beam" />}
+            <div className="cw-headlight-beam" />
           </div>
-          <div className="cw-car-shadow" style={{ left: carX + 30, opacity: parked ? 0.5 : 0.3 }} />
+          <div className="cw-exhaust-trail cw-car-drive" />
+          <div className="cw-car-shadow cw-car-drive" />
         </div>
 
         <div className="cw-scroll-hint" aria-hidden="true">
@@ -227,7 +167,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── STATS STRIP ── */}
+      {/* ── Stats strip ── */}
       <section className="cw-stats-strip" aria-label="Key statistics">
         {stats.map((s, i) => (
           <Reveal key={i} delay={i * 80} className="cw-stat">
@@ -239,7 +179,7 @@ export default function Home() {
         ))}
       </section>
 
-      {/* ── FEATURES ── */}
+      {/* ── Features ── */}
       <section className="cw-features">
         <div className="cw-section-inner">
           <Reveal>
@@ -251,10 +191,10 @@ export default function Home() {
           </Reveal>
           <div className="cw-feature-grid">
             {[
-              { icon: '🏭', title: 'GREET2 Manufacturing',   body: 'Production emissions for glider, battery pack, fluids, and assembly — the same model used by the US Department of Energy.', accent: '#00C853' },
-              { icon: '⚡', title: 'Live Grid Intensity',    body: '200+ countries with transmission & distribution losses. GPR machine-learning forecast to 2034 with 95% confidence bands.',  accent: '#69F0AE' },
-              { icon: '🚗', title: 'WLTP Operational',       body: 'Real-world fuel cycle emissions using official WLTP test data combined with well-to-wheel fuel upstream analysis.',           accent: '#B2DFDB' },
-              { icon: '♻', title: 'End-of-Life Recycling',  body: 'Battery recycling (1.47 kg CO₂/kg), metal recovery credits, and ASR shredder residue — per GREET2 ELV methodology.',        accent: '#FFD740' },
+              { icon: '🏭', title: 'GREET2 Manufacturing',  body: 'Production emissions for glider, battery pack, fluids, and assembly — the same model used by the US Department of Energy.', accent: '#00C853' },
+              { icon: '⚡', title: 'Live Grid Intensity',   body: '200+ countries with T&D losses. GPR machine-learning forecast to 2034 with 95% confidence bands.',                            accent: '#69F0AE' },
+              { icon: '🚗', title: 'WLTP Operational',      body: 'Real-world fuel cycle emissions using official WLTP test data combined with well-to-wheel fuel upstream analysis.',            accent: '#B2DFDB' },
+              { icon: '♻', title: 'End-of-Life Recycling', body: 'Battery recycling (1.47 kg CO₂/kg), metal recovery credits, and ASR shredder residue — per GREET2 ELV methodology.',         accent: '#FFD740' },
             ].map((f, i) => (
               <Reveal key={i} delay={i * 100}>
                 <div className="cw-feature-card" style={{ '--card-accent': f.accent }}>
@@ -269,7 +209,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── EMISSIONS VISUALISER ── */}
+      {/* ── Emissions visualiser ── */}
       <section className="cw-viz-section">
         <div className="cw-section-inner">
           <Reveal>
@@ -300,15 +240,15 @@ export default function Home() {
           </div>
           <Reveal delay={500}>
             <div className="cw-viz-legend">
-              <span><span className="cw-leg-dot cw-leg-dot--mfg"/>Manufacturing</span>
-              <span><span className="cw-leg-dot cw-leg-dot--ops"/>Operational</span>
-              <span><span className="cw-leg-dot cw-leg-dot--rec"/>Recycling</span>
+              <span><span className="cw-leg-dot cw-leg-dot--mfg" />Manufacturing</span>
+              <span><span className="cw-leg-dot cw-leg-dot--ops" />Operational</span>
+              <span><span className="cw-leg-dot cw-leg-dot--rec" />Recycling</span>
             </div>
           </Reveal>
         </div>
       </section>
 
-      {/* ── TOOLS GRID ── */}
+      {/* ── Tools grid ── */}
       <section className="cw-tools">
         <div className="cw-section-inner">
           <Reveal>
@@ -335,7 +275,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── BOTTOM CTA ── */}
+      {/* ── Bottom CTA ── */}
       <section className="cw-bottom-cta">
         <Reveal>
           <p className="cw-bottom-eyebrow">Ready to find out?</p>

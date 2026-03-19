@@ -2,10 +2,21 @@
   background: white;
   border-radius: 8px;
   padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition: box-shadow 0.3s ease;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.1),
+    0 0 12px rgba(0, 200, 83, 0.35),
+    0 0 32px rgba(0, 200, 83, 0.15);
+  filter: drop-shadow(0 0 8px rgba(0, 200, 83, 0.4));
+  transition: box-shadow 0.3s ease, filter 0.3s ease;
 }
 
+.card:hover {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.1),
+    0 0 20px rgba(0, 200, 83, 0.55),
+    0 0 60px rgba(0, 200, 83, 0.25);
+  filter: drop-shadow(0 0 14px rgba(0, 200, 83, 0.6));
+}
 .card-clickable {
   cursor: pointer;
 }

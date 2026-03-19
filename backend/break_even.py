@@ -18,7 +18,6 @@ def break_even_km(vehicle_a, vehicle_b, country, year):
     """
     type_a = vehicle_a.get("vehicle_type", "")
     type_b = vehicle_b.get("vehicle_type", "")
-
     if type_a not in VALID_TYPES:
         return {"error": f"Vehicle A has unsupported vehicle_type '{type_a}'"}
     if type_b not in VALID_TYPES:

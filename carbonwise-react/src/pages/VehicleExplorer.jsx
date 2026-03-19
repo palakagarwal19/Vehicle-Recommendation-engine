@@ -67,7 +67,7 @@ export default function VehicleExplorer() {
   const [sugLoading, setSugLoading] = useState(false);
 
   /* selected vehicle identity */
-  const [selected, setSelected] = useState(null); // { brand, model, year, vehicle_type }
+  const [selected, setSelected] = useState(null);
 
   /* settings */
   const [country, setCountry] = useState("US");
@@ -112,8 +112,9 @@ export default function VehicleExplorer() {
   const pickVehicle = useCallback(async (v) => {
     setSelected(v);
     setQuery(`${v.brand} ${v.model} (${v.year})`);
-    setShowSug(false);
+    // FIX 1: Immediately and forcefully clear suggestions
     setSuggestions([]);
+    setShowSug(false);
 
     // reset
     setDetail(null); setLifecycle(null); setCarbonScore(null);
@@ -163,7 +164,7 @@ export default function VehicleExplorer() {
         }).then(r => r.json()),
       ]);
 
-      if (scoreRes.status  === "fulfilled") setCarbonScore(scoreRes.value);
+      if (scoreRes.status  === "fulfilled" && !scoreRes.value?.error) setCarbonScore(scoreRes.value);
       if (annualRes.status === "fulfilled") setAnnualImpact(annualRes.value);
       if (imgRes.status    === "fulfilled") setVehicleImage(imgRes.value?.image_url || null);
     }
@@ -200,7 +201,7 @@ export default function VehicleExplorer() {
               body: JSON.stringify({ total_g_per_km: lc.total_g_per_km, annual_km: distanceKm })
             }).then(r => r.json()),
           ]);
-          if (scoreRes.status  === "fulfilled") setCarbonScore(scoreRes.value);
+          if (scoreRes.status  === "fulfilled" && !scoreRes.value?.error) setCarbonScore(scoreRes.value);
           if (annualRes.status === "fulfilled") setAnnualImpact(annualRes.value);
         }
       } catch {}
@@ -246,8 +247,8 @@ export default function VehicleExplorer() {
         lifecycle.operational_total_kg,
         ...(lifecycle.recycling_kg > 0 ? [lifecycle.recycling_kg] : [])
       ],
-      backgroundColor: ["#00C853", "#69F0AE", "#B2DFDB"],
-      borderColor: ["#009624", "#2bbd7e", "#80CBC4"],
+      backgroundColor: ["#2196F3", "#FF5252", "#FFC107"],
+      borderColor:     ["#1565C0", "#B71C1C", "#F57F17"],
       borderWidth: 2,
     }]
   } : null;
@@ -261,8 +262,8 @@ export default function VehicleExplorer() {
         lifecycle.operational_total_kg,
         lifecycle.recycling_kg ?? 0,
       ],
-      backgroundColor: ["#00C853", "#69F0AE", "#B2DFDB"],
-      borderColor: ["#009624", "#2bbd7e", "#80CBC4"],
+      backgroundColor: ["#2196F3", "#FF5252", "#FFC107"],
+      borderColor:     ["#1565C0", "#B71C1C", "#F57F17"],
       borderWidth: 1,
       borderRadius: 6,
     }]
@@ -331,7 +332,7 @@ export default function VehicleExplorer() {
     : carbonScore.grade === "C" ? "#FFD600"
     : carbonScore.grade === "D" ? "#FF9800"
     : "#FF5252"
-    : "#00C853";
+    : "#555";
 
   const ptColor = selected ? (POWERTRAIN_COLORS[selected.vehicle_type] || "#69F0AE") : "#00C853";
 
@@ -410,6 +411,8 @@ export default function VehicleExplorer() {
                 value={query}
                 onChange={handleQueryChange}
                 onFocus={() => suggestions.length > 0 && setShowSug(true)}
+                // FIX 1: hide suggestions on blur after small delay (allows click to register first)
+                onBlur={() => setTimeout(() => setShowSug(false), 150)}
                 placeholder="Search brand or model… e.g. Tesla Model 3"
                 style={{
                   flex: 1, background: "transparent", border: "none", outline: "none",
@@ -443,6 +446,8 @@ export default function VehicleExplorer() {
                 {suggestions.map((v, i) => (
                   <div
                     key={i}
+                    // FIX 1: preventDefault on mouseDown prevents input blur before click fires
+                    onMouseDown={e => e.preventDefault()}
                     onClick={() => pickVehicle(v)}
                     style={{
                       display: "flex", alignItems: "center", gap: "1rem",
@@ -585,31 +590,44 @@ export default function VehicleExplorer() {
               </div>
 
               {/* Right: carbon score badge */}
-              {(carbonScore || loadingLifecycle) && (
+              {/* FIX 2: show when selected + (loading OR score ready OR lifecycle loaded without score) */}
+              {selected && (loadingLifecycle || carbonScore || lifecycle) && (
                 <div style={{ textAlign: "center", flexShrink: 0 }}>
                   {loadingLifecycle ? (
                     <Sk w={90} h={90} r="50%" />
-                  ) : carbonScore && (
+                  ) : carbonScore ? (
+                    <>
+                      <div style={{
+                        position: "relative", width: 88, height: 88,
+                        border: `3px solid ${scoreColor}`,
+                        borderRadius: "50%",
+                        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                        animation: "glow 3s ease infinite",
+                      }}>
+                        <div style={{ fontFamily: "'Syne',sans-serif", fontSize: "2rem", fontWeight: 800, color: scoreColor, lineHeight: 1 }}>
+                          {carbonScore.grade}
+                        </div>
+                        <div style={{ fontSize: ".6rem", color: "rgba(255,255,255,.4)", letterSpacing: ".08em", textTransform: "uppercase", marginTop: 2 }}>
+                          score
+                        </div>
+                      </div>
+                      <div style={{ fontSize: ".65rem", color: "rgba(255,255,255,.35)", marginTop: ".5rem", maxWidth: 88, lineHeight: 1.4 }}>
+                        {carbonScore.label}
+                      </div>
+                    </>
+                  ) : lifecycle ? (
+                    /* Fallback: show g/km rate if score API failed */
                     <div style={{
-                      position: "relative", width: 88, height: 88,
-                      border: `3px solid ${scoreColor}`,
-                      borderRadius: "50%",
+                      width: 88, height: 88, borderRadius: "50%",
+                      border: "3px solid rgba(255,255,255,.12)",
                       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                      animation: "glow 3s ease infinite",
                     }}>
-                      <div style={{ fontFamily: "'Syne',sans-serif", fontSize: "2rem", fontWeight: 800, color: scoreColor, lineHeight: 1 }}>
-                        {carbonScore.grade}
+                      <div style={{ fontSize: ".95rem", fontWeight: 700, color: "rgba(255,255,255,.6)", lineHeight: 1 }}>
+                        {fmt(lifecycle.total_g_per_km, 0)}
                       </div>
-                      <div style={{ fontSize: ".6rem", color: "rgba(255,255,255,.4)", letterSpacing: ".08em", textTransform: "uppercase", marginTop: 2 }}>
-                        score
-                      </div>
+                      <div style={{ fontSize: ".55rem", color: "rgba(255,255,255,.3)", marginTop: 3, letterSpacing: ".04em" }}>g/km</div>
                     </div>
-                  )}
-                  {carbonScore && (
-                    <div style={{ fontSize: ".65rem", color: "rgba(255,255,255,.35)", marginTop: ".5rem", maxWidth: 88, lineHeight: 1.4 }}>
-                      {carbonScore.label}
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               )}
             </div>
